@@ -99,6 +99,7 @@ int main() {
             disconnect();
             jeu.reset();
             jeu.mode = false;
+            jeu.justLost = true;
             connected = false;
             connecting = false;
 
