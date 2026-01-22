@@ -97,6 +97,7 @@ int main() {
 
             jeu.fin_partie_online = false;
             disconnect();
+            jeu.reset();
             jeu.mode = false;
             connected = false;
             connecting = false;
