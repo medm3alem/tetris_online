@@ -29,8 +29,8 @@ void network_connect(){
         sockaddr_in server{};
         server.sin_family = AF_INET;
         server.sin_port = htons(4242); // port serveura
-        //const char* server_ip = "10.90.234.220";
-        const char* server_ip = "10.31.30.16";
+        const char* server_ip = "10.90.234.220";
+        //const char* server_ip = "10.31.30.16";
         if (inet_pton(AF_INET, server_ip, &server.sin_addr) <= 0) {
             std::cerr << "ERROR: Invalid address: " << server_ip << std::endl;
             close(sock);
