@@ -98,8 +98,12 @@ int main() {
             jeu.fin_partie_online = false;
             disconnect();
             jeu.reset();
+
+            jeu.set_msg("Victory!");
+            block_mode = false;
+            block_start = false;
             jeu.mode = false;
-            jeu.justLost = true;
+            jeu.justLost = false; //
             connected = false;
             connecting = false;
 
