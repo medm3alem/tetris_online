@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
 
 
     if (argc>=2){
-        const char* ip_serveur = argv[1];
+        ip_serveur = argv[1];
     }
 
 
