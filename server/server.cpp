@@ -67,6 +67,7 @@ void handle_client(int client_socket) {
 
                 if (start_match) {
                     send(c,start_msg.c_str(), start_msg.size(), 0);
+                    start_match = false;
                 }
 
 

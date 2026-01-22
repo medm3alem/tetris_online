@@ -12,7 +12,7 @@ bool started = false;
 bool block_start = false;
 bool block_mode = false;
 bool connecting = false;
-bool waiting_opponent = false;
+bool waiting_opponent = true;
 
 bool event(double time) {
     double current_time = GetTime();
