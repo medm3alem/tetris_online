@@ -86,12 +86,22 @@ int main() {
         if (jeu.fin_partie_online && connected) {
             // La partie en ligne est terminée
             std::cout << "Online game finished - disconnecting..." << std::endl;
+            /*
             disconnect();
             jeu.reset();
             jeu.set_msg("Victory!");
             jeu.justLost = false;
             connected = false;
+            connecting = false;*/
+
+
+            jeu.justLost = false;
+            disconnect();
+            jeu.mode = false;
+            connected = false;
             connecting = false;
+
+
 /*
             jeu.justLost = false;
             disconnect();
@@ -163,13 +173,7 @@ int main() {
             jeu.waiting = false;
         }
 
-/*
-jeu.mode = true;
-block_start = true;
-block_mode = true;
 
-
-*/
 
         if (! block_mode && !jeu.justLost) col_mode = jeu.mode ? GREEN : RED;
         else {
