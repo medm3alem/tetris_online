@@ -422,7 +422,8 @@ class object {
         std::vector<int> not_null = find_not_null();
         int n = not_null.size();
         if (n == 0) return 0;
-        for (int indline=0; indline < n; indline++) destroyline(not_null[indline]);
+        //for (int indline=0; indline < n; indline++) destroyline(not_null[indline]);
+        for (int indline=n-1; indline >=0; indline--) destroyline(not_null[indline]);
         //std::cout << n << std::endl;
         return n;
     }

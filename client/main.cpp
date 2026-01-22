@@ -13,6 +13,7 @@ bool block_start = false;
 bool block_mode = false;
 bool connecting = false;
 bool waiting_opponent = true;
+const char* ip_serveur = "10.90.234.220";
 
 bool event(double time) {
     double current_time = GetTime();
@@ -25,7 +26,8 @@ bool event(double time) {
 
 
 
-int main() {
+int main(int argc, char** argv) {
+
     signal(SIGPIPE, SIG_IGN); // pour ignorer quand on envoie sur une socket fermée
 
     Color darkblue = {44,44,127, 255};
@@ -39,7 +41,9 @@ int main() {
 //            true en ligne
 
 
-
+    if (argc>=2){
+        const char* ip_serveur = argv[1];
+    }
 
 
     SetMusicVolume(jeu.music, 0.3f);
@@ -61,7 +65,7 @@ int main() {
         if (jeu.mode && !connected && !connecting) {
             // On vient de passer en mode online
             std::cout << "Switching to ONLINE mode - connecting to server..." << std::endl;
-            network_connect();
+            network_connect(ip_serveur);
             connecting = true;
         }
 
@@ -103,19 +107,12 @@ int main() {
             block_mode = false;
             block_start = false;
             jeu.mode = false;
-            jeu.justLost = false; //
+            jeu.justLost = false; 
             connected = false;
             connecting = false;
 
 
-/*
-            jeu.justLost = false;
-            disconnect();
-            jeu.reset();
-            jeu.set_msg("Victory!");
-            jeu.mode = false;
-            connected = false;
-            connecting = false;*/
+
         }
 
         if (connected){
@@ -258,7 +255,7 @@ int main() {
         // fin volume slider
 
 
-        DrawText(jeu.get_msg().c_str(), 320, 440, 27, WHITE);
+        DrawText(jeu.get_msg().c_str(), 320, 420, 27, WHITE);
         DrawRectangleRounded({320, 55, 170, 60}, 0.3, 6, {59, 85, 162, 255}); // cadre score
         DrawRectangleRounded({320, 260, 170, 140}, 0.3, 6, {59, 85, 162, 255});// cadre next
         DrawRectangleRounded({320, 160, 170, 40}, 0.3, 6, {59, 85, 162, 255});// cadre level

@@ -16,9 +16,9 @@ std::queue<std::string> messages;
 std::mutex msg_mutex;
 std::thread connection_thread;
 
-void network_connect(){
+void network_connect(const char* server_ip){
 // lancer la connexiion dans un thread séparé
-    connection_thread = std::thread([](){
+    connection_thread = std::thread([server_ip](){
         sock = socket(AF_INET, SOCK_STREAM, 0);  //crée une socket TCP IPv4
         if (sock < 0) {
             std::cerr << "ERROR: Socket creation failed: " << strerror(errno) << std::endl;
@@ -29,7 +29,7 @@ void network_connect(){
         sockaddr_in server{};
         server.sin_family = AF_INET;
         server.sin_port = htons(4242); // port serveura
-        const char* server_ip = "10.90.234.220";
+        //const char* server_ip = "10.90.234.220";
         //const char* server_ip = "10.31.30.16";
         if (inet_pton(AF_INET, server_ip, &server.sin_addr) <= 0) {
             std::cerr << "ERROR: Invalid address: " << server_ip << std::endl;

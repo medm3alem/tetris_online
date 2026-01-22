@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-void network_connect();
+void network_connect(const char* server_ip = "10.90.234.220");
 void disconnect();
 void network_send(const std::string& msg);
 void network_start_listener();
