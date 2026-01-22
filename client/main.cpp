@@ -95,7 +95,7 @@ int main() {
             connecting = false;*/
 
 
-            jeu.justLost = false;
+            jeu.fin_partie_online = false;
             disconnect();
             jeu.mode = false;
             connected = false;
