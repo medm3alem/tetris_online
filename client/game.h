@@ -30,6 +30,7 @@ class Game {
     Music music;
     Sound rotate_sound;
     Sound destroy_sound;
+    int max_chat = 0;
 
     std::string get_msg() {
         return msg;
@@ -104,6 +105,7 @@ class Game {
         start = false;
         fin_partie_online = false;
         waiting = true;
+        int max_chat = 0;
     }
 
     ~Game() {
@@ -124,6 +126,20 @@ class Game {
             fin_partie_online = true;
             start = false;
         }
+        else if (msg.rfind("CHAT|", 0) == 0) {
+            std::string chat_msg = msg.substr(5);
+            draw_msg(chat_msg, max_chat, true);
+            max_chat +=1;
+        }
+    }
+    void draw_msg(std::string message, int x, bool recu){
+        // (530, 180, 230, 300)
+        // à ajouter : faire défiler les messages si trop nombreux en fonction de max_chat
+        int dec = recu ?  130 : 20;
+        COLOR col = recu ? RED : DARKGRAY;
+        Rectangle cadre = { 530, 70*x + dec, 80, 50 };
+        DrawRectangleRounded(cadre, 0.3f, 6, WHITE);
+        DrawText(message.c_str(), cadre.x + 10, cadre.y + 13, 15, col);
     }
 
     void add_garbage_line() {
@@ -172,6 +188,7 @@ class Game {
         start = false;
         fin_partie_online = false;
         waiting = true;
+        int max_chat = 0;
     }
 
     void input() {

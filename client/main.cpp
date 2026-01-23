@@ -14,6 +14,7 @@ bool block_mode = false;
 bool connecting = false;
 bool waiting_opponent = true;
 const char* ip_serveur = "10.90.234.220";
+int max_chat = 0;
 
 bool event(double time) {
     double current_time = GetTime();
@@ -31,7 +32,7 @@ int main(int argc, char** argv) {
     signal(SIGPIPE, SIG_IGN); // pour ignorer quand on envoie sur une socket fermée
 
     Color darkblue = {44,44,127, 255};
-    InitWindow(600, 620, "TETRIS");
+    InitWindow(780, 620, "TETRIS");
     InitAudioDevice();
     //SetAudioStreamBufferSizeDefault(4096);
     SetTargetFPS(60);
@@ -90,14 +91,6 @@ int main(int argc, char** argv) {
         if (jeu.fin_partie_online && connected) {
             // La partie en ligne est terminée
             std::cout << "Online game finished - disconnecting..." << std::endl;
-            /*
-            disconnect();
-            jeu.reset();
-            jeu.set_msg("Victory!");
-            jeu.justLost = false;
-            connected = false;
-            connecting = false;*/
-
 
             jeu.fin_partie_online = false;
             disconnect();
@@ -146,16 +139,19 @@ int main(int argc, char** argv) {
         DrawText("Next", 365,210, 38, WHITE);
 
 
-
         Color col_mode;
         Color col_start;
 
         Rectangle btn_mode = { 320, 490, 120, 40 };
         Rectangle btn_start = { 450, 490, 120, 40 };
 
+
+
         Vector2 mouse = GetMousePosition();
 
         bool hover_mode = CheckCollisionPointRec(mouse, btn_mode);
+
+
 
         if (hover_mode && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !block_mode && ! jeu.justLost) {
             jeu.mode = ! jeu.mode;
@@ -223,6 +219,82 @@ int main(int argc, char** argv) {
         );
 
 
+        //chat
+
+        Rectangle btn_gl = { 530, 30, 60, 50 };
+        Rectangle btn_wp = { 620, 30, 60, 50 };
+        Rectangle btn_wow = { 700, 30, 60, 50 };
+        Rectangle btn_thx = { 530, 100, 60, 50 };
+        Rectangle btn_gg = { 620, 100, 60, 50 };
+        Rectangle btn_oups = { 700, 100, 60, 50 };
+
+        bool hover_gl = CheckCollisionPointRec(mouse, btn_gl);
+        bool hover_wp = CheckCollisionPointRec(mouse, btn_wp);
+        bool hover_wow = CheckCollisionPointRec(mouse, btn_wow);
+        bool hover_thx = CheckCollisionPointRec(mouse, btn_thx);
+        bool hover_gg = CheckCollisionPointRec(mouse, btn_gg);
+        bool hover_oups = CheckCollisionPointRec(mouse, btn_oups);
+
+
+        DrawRectangleRounded(btn_gl, 0.3f, 6, WHITE);
+        DrawText("Good\nluck!", btn_gl.x + 10, btn_gl.y + 7, 15, BLACK);
+
+        DrawRectangleRounded(btn_wp, 0.3f, 6, WHITE);
+        DrawText("Well\nplayed!", btn_wp.x + 10, btn_wp.y + 7, 15, BLACK);
+
+        DrawRectangleRounded(btn_wow, 0.3f, 6, WHITE);
+        DrawText("Wow!", btn_wow.x + 12, btn_wow.y + 13, 20, BLACK);
+
+        DrawRectangleRounded(btn_thx, 0.3f, 6, WHITE);
+        DrawText("Thanks!", btn_thx.x + 4, btn_thx.y + 13, 14, BLACK);
+
+        DrawRectangleRounded(btn_gg, 0.3f, 6, WHITE);
+        DrawText("Good\nGame!", btn_gg.x + 10, btn_gg.y + 7, 15, BLACK);
+
+        DrawRectangleRounded(btn_oups, 0.3f, 6, WHITE);
+        DrawText("Oops!", btn_oups.x + 10, btn_oups.y + 13, 15, BLACK);
+
+
+        if (hover_gl && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
+            network_send("CHAT|Good luck!\n");
+            jeu.draw_msg("Good luck!", jeu.max_chat, false);
+            jeu.max_chat +=1;
+        }
+
+        if (hover_wp && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
+            network_send("CHAT|Well Played!\n");
+            jeu.draw_msg("Well Played!", jeu.max_chat, false);
+            jeu.max_chat +=1;
+        }
+
+        if (hover_wow && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
+            network_send("CHAT|Wow!\n");
+            jeu.draw_msg("Wow!", jeu.max_chat, false);
+            jeu.max_chat +=1;
+        }
+
+        if (hover_thx && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
+            network_send("CHAT|Thanks!\n");
+            jeu.draw_msg("Thanks!", jeu.max_chat, false);
+            jeu.max_chat +=1;
+        }
+
+        if (hover_gg && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
+            network_send("CHAT|Good Game!\n");
+            jeu.draw_msg("Good Game!", jeu.max_chat, false);
+            jeu.max_chat +=1;
+        }
+
+        if (hover_oups && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
+            network_send("CHAT|Oops!\n");
+            jeu.draw_msg("Oops!", jeu.max_chat, false);
+            jeu.max_chat +=1;
+        }
+
+
+        //fin chat
+
+
 
         // volume slider
         DrawText("Volume", 320, 550, 20, WHITE);
@@ -259,6 +331,7 @@ int main(int argc, char** argv) {
         DrawRectangleRounded({320, 55, 170, 60}, 0.3, 6, {59, 85, 162, 255}); // cadre score
         DrawRectangleRounded({320, 260, 170, 140}, 0.3, 6, {59, 85, 162, 255});// cadre next
         DrawRectangleRounded({320, 160, 170, 40}, 0.3, 6, {59, 85, 162, 255});// cadre level
+        DrawRectangleRounded({530, 180, 230, 300}, 0.3, 6, {59, 85, 162, 255});// cadre chat
 
         jeu.dessiner();
         jeu.dessiner_next();
