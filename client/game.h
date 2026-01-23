@@ -31,6 +31,9 @@ class Game {
     Sound rotate_sound;
     Sound destroy_sound;
     int max_chat = 0;
+    std::vector<std::string> chat_messages;
+    std::vector<bool> chat_recu;
+
 
     std::string get_msg() {
         return msg;
@@ -106,6 +109,8 @@ class Game {
         fin_partie_online = false;
         waiting = true;
         int max_chat = 0;
+        chat_messages = std::vector<std::string>(6, "");
+        chat_recu = std::vector<bool>(6, false);
     }
 
     ~Game() {
@@ -128,18 +133,29 @@ class Game {
         }
         else if (msg.rfind("CHAT|", 0) == 0) {
             std::string chat_msg = msg.substr(5);
-            draw_msg(chat_msg, max_chat, true);
+            ajouter_msg(chat_msg, true);
             max_chat +=1;
         }
     }
-    void draw_msg(std::string message, int x, bool recu){
-        // (530, 180, 230, 300)
-        // à ajouter : faire défiler les messages si trop nombreux en fonction de max_chat
-        float dec = recu ?  130.0 : 20.0;
-        Color col = recu ? RED : DARKGRAY;
-        Rectangle cadre = { 530, 70*x + dec, 80, 50 };
-        DrawRectangleRounded(cadre, 0.3f, 6, WHITE);
-        DrawText(message.c_str(), cadre.x + 10, cadre.y + 13, 15, col);
+    void ajouter_msg(std::string message, bool recu){
+        if (max_chat >=6){
+            for (int i = 0; i < 6; i++) {
+            chat_messages[i].clear();
+            chat_recu[i] = false;
+            }
+            max_chat = 0;
+        }
+        chat_messages[max_chat] = message;
+        chat_recu[max_chat] = recu;
+    }
+    void draw_msg(){
+        for (int i = 0; i < max_chat; i++) {
+            float dec = chat_recu[i] ?  130.0 : 20.0;
+            Color col = chat_recu[i] ? RED : DARKGRAY;
+            Rectangle cadre = { 530, 70*i + dec, 200, 50 };
+            DrawRectangleRounded(cadre, 0.3f, 6, WHITE);
+            DrawText(chat_messages[i].c_str(), cadre.x + 10, cadre.y + 13, 10, col);
+        }
     }
 
     void add_garbage_line() {
@@ -189,6 +205,13 @@ class Game {
         fin_partie_online = false;
         waiting = true;
         int max_chat = 0;
+
+        for (int i = 0; i < 6; i++) {
+            chat_messages[i].clear();
+            chat_recu[i] = false;
+            }
+
+        
     }
 
     void input() {
