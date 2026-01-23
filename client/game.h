@@ -109,8 +109,8 @@ class Game {
         fin_partie_online = false;
         waiting = true;
         int max_chat = 0;
-        chat_messages = std::vector<std::string>(6, "");
-        chat_recu = std::vector<bool>(6, false);
+        chat_messages = std::vector<std::string>(10, "");
+        chat_recu = std::vector<bool>(10, false);
     }
 
     ~Game() {
@@ -138,8 +138,8 @@ class Game {
         }
     }
     void ajouter_msg(std::string message, bool recu){
-        if (max_chat >=6){
-            for (int i = 0; i < 6; i++) {
+        if (max_chat >=10){
+            for (int i = 0; i < 10; i++) {
             chat_messages[i].clear();
             chat_recu[i] = false;
             }
@@ -150,11 +150,12 @@ class Game {
     }
     void draw_msg(){
         for (int i = 0; i < max_chat; i++) {
-            float dec = chat_recu[i] ?  130.0 : 20.0;
-            Color col = chat_recu[i] ? RED : DARKGRAY;
-            Rectangle cadre = { 530, 70*i + dec, 200, 50 };
-            DrawRectangleRounded(cadre, 0.3f, 6, WHITE);
-            DrawText(chat_messages[i].c_str(), cadre.x + 10, cadre.y + 13, 10, col);
+            float dec = chat_recu[i] ?  0.0 : 120.0;
+            Color col = chat_recu[i] ? RED : BLACK;
+            float y = 175 + 30*i;
+            Rectangle cadre = { 540 + dec, y, 100, 50 };
+            //DrawRectangleRounded(cadre, 0.3f, 6, WHITE);
+            DrawText(chat_messages[i].c_str(), cadre.x + 10, cadre.y + 13, 15, col);
         }
     }
 
@@ -204,9 +205,9 @@ class Game {
         start = false;
         fin_partie_online = false;
         waiting = true;
-        int max_chat = 0;
+        max_chat = 0;
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 10; i++) {
             chat_messages[i].clear();
             chat_recu[i] = false;
             }
