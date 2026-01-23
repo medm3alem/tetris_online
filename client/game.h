@@ -135,8 +135,8 @@ class Game {
     void draw_msg(std::string message, int x, bool recu){
         // (530, 180, 230, 300)
         // à ajouter : faire défiler les messages si trop nombreux en fonction de max_chat
-        int dec = recu ?  130 : 20;
-        COLOR col = recu ? RED : DARKGRAY;
+        float dec = recu ?  130.0 : 20.0;
+        Color col = recu ? RED : DARKGRAY;
         Rectangle cadre = { 530, 70*x + dec, 80, 50 };
         DrawRectangleRounded(cadre, 0.3f, 6, WHITE);
         DrawText(message.c_str(), cadre.x + 10, cadre.y + 13, 15, col);

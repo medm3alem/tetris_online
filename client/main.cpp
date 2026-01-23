@@ -142,6 +142,7 @@ int main(int argc, char** argv) {
         Color col_mode;
         Color col_start;
 
+
         Rectangle btn_mode = { 320, 490, 120, 40 };
         Rectangle btn_start = { 450, 490, 120, 40 };
 
