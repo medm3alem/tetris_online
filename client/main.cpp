@@ -58,6 +58,7 @@ int main(int argc, char** argv) {
     Rectangle sliderKnob  = { 320 + 150 * volume - 6, 574, 12, 16 };
 
     bool dragging = false;
+    DrawRectangleRounded({530, 180, 230, 300}, 0.3, 6, {59, 85, 162, 255});// cadre chat
 
     while (!WindowShouldClose()) {
         UpdateMusicStream(jeu.music);
@@ -236,7 +237,6 @@ int main(int argc, char** argv) {
         bool hover_gg = CheckCollisionPointRec(mouse, btn_gg);
         bool hover_oups = CheckCollisionPointRec(mouse, btn_oups);
 
-        DrawRectangleRounded({530, 180, 230, 300}, 0.3, 6, {59, 85, 162, 255});// cadre chat
 
         DrawRectangleRounded(btn_gl, 0.3f, 6, WHITE);
         DrawText("Good\nluck!", btn_gl.x + 10, btn_gl.y + 7, 15, BLACK);
