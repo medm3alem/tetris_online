@@ -1,0 +1,299 @@
+\documentclass[11pt,a4paper]{article}
+
+% ========================
+% Packages
+% ========================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{graphicx}
+
+\geometry{margin=2.5cm}
+
+% ========================
+% Code style
+% ========================
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    language=bash
+}
+
+% ========================
+% Title formatting
+% ========================
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+% ========================
+% Document
+% ========================
+\begin{document}
+
+% ========================
+% Page de garde
+% ========================
+\begin{titlepage}
+    \centering
+
+    % Logo ENSTA
+    \includegraphics[width=4cm]{ensta.png}
+    \vspace{1.5cm}
+
+    {\Large\bfseries ENSTA Paris\par}
+    \vspace{0.5cm}
+
+    {\large\bfseries Matière : IN204\par}
+    \vspace{2cm}
+
+    {\Huge\bfseries Guide d'installation et d'exécution\par}
+    \vspace{0.4cm}
+    {\Huge\bfseries du projet Tetris en ligne\par}
+
+    \vspace{1.5cm}
+    {\Large Windows + WSL (Ubuntu) / Linux natif\par}
+
+    \vspace{2.5cm}
+
+    {\large\bfseries Réalisé par :\par}
+    \vspace{0.3cm}
+    {\large ELADEB Mohamed\par}
+    {\large ABID Mahdi\par}
+
+    \vfill
+
+    {\large Année universitaire 2025 -- 2026\par}
+
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ========================
+\section{Installation de WSL}
+
+Sous Windows, ouvrir \textbf{PowerShell en administrateur} et exécuter :
+
+\begin{lstlisting}
+wsl --install
+\end{lstlisting}
+
+Redémarrer le PC lorsque cela est demandé, puis lancer Ubuntu :
+
+\begin{lstlisting}
+wsl
+\end{lstlisting}
+
+% ========================
+\section{Installation des outils de base}
+
+Dans le terminal WSL :
+
+\begin{lstlisting}
+sudo apt update
+sudo apt install -y build-essential cmake git g++ net-tools
+\end{lstlisting}
+
+% ========================
+\section{Installation des dépendances graphiques (Raylib)}
+
+\begin{lstlisting}
+sudo apt install -y \
+libx11-dev \
+libxrandr-dev \
+libxinerama-dev \
+libxcursor-dev \
+libxi-dev \
+libgl1-mesa-dev
+\end{lstlisting}
+
+% ========================
+\section{Installation de Raylib}
+
+\begin{lstlisting}
+cd ~
+git clone https://github.com/raysan5/raylib.git
+cd raylib
+mkdir build && cd build
+cmake ..
+make -j4
+sudo make install
+sudo ldconfig
+\end{lstlisting}
+
+% ========================
+\section{Installation du support audio (optionnel)}
+
+\begin{lstlisting}
+sudo apt install -y pulseaudio pulseaudio-utils alsa-utils
+pulseaudio --start
+\end{lstlisting}
+
+Test du son :
+
+\begin{lstlisting}
+speaker-test -t sine -f 440
+\end{lstlisting}
+
+% ========================
+\section{Récupération du projet}
+
+\textbf{Important :} ne pas cloner le projet dans \texttt{/mnt/c}.
+
+\begin{lstlisting}
+cd ~
+git clone https://github.com/medm3alem/tetris_online.git
+\end{lstlisting}
+
+% ========================
+\section{Compilation du serveur}
+
+\begin{lstlisting}
+cd ~/tetris_online/server
+g++ -std=c++17 server.cpp -o server -lpthread
+\end{lstlisting}
+
+% ========================
+\section{Compilation du client}
+
+\begin{lstlisting}
+cd ~/tetris_online/client
+mkdir build
+cd build
+cmake ..
+make
+\end{lstlisting}
+
+% ========================
+\section{Lancement du serveur}
+
+\begin{lstlisting}
+cd ~/tetris_online/server
+./server
+\end{lstlisting}
+
+Le serveur écoute sur le port \textbf{4242}.
+
+% ========================
+\section{Configuration réseau Windows ↔ WSL}
+
+\subsection{Récupération des adresses IP}
+
+Adresse IP Windows :
+
+\begin{lstlisting}
+ipconfig
+\end{lstlisting}
+
+Adresse IP WSL :
+
+\begin{lstlisting}
+hostname -I
+\end{lstlisting}
+
+\subsection{Redirection de port}
+
+Dans \textbf{PowerShell en administrateur} :
+
+\begin{lstlisting}
+netsh interface portproxy add v4tov4 ^
+listenport=4242 listenaddress=0.0.0.0 ^
+connectport=4242 connectaddress=IP_WSL
+\end{lstlisting}
+
+\subsection{Ouverture du port dans le pare-feu}
+
+\begin{lstlisting}
+New-NetFirewallRule ^
+-DisplayName "Tetris WSL Server" ^
+-Direction Inbound ^
+-Protocol TCP ^
+-LocalPort 4242 ^
+-Action Allow ^
+-Profile Any
+\end{lstlisting}
+
+% ========================
+\section{Lancement du client}
+
+Avant de lancer le client, l'utilisateur doit récupérer l'adresse IP
+de la machine sur laquelle le serveur est exécuté.
+
+Sous Windows :
+
+\begin{lstlisting}
+ipconfig
+\end{lstlisting}
+
+Puis lancer le client :
+
+\begin{lstlisting}
+cd ~/tetris_online/client/build
+./tetris xx.xx.xx.xx
+\end{lstlisting}
+
+où \texttt{xx.xx.xx.xx} correspond à l'adresse IP Windows.
+
+\begin{center}
+\textbf{Exemple :} \texttt{./tetris 10.90.234.216}
+\end{center}
+
+\textbf{Attention :} ne jamais utiliser l'adresse IP WSL côté client.
+
+% ========================
+\section{Cas d'une exécution sous Linux natif}
+
+Si le projet est exécuté sur une machine Linux native, WSL n'est pas nécessaire.
+
+Dans ce cas :
+\begin{itemize}
+    \item Installer Raylib
+    \item Compiler le projet
+    \item Lancer le serveur et le client
+\end{itemize}
+
+Le client se connecte directement à l'adresse IP Linux du serveur :
+
+\begin{lstlisting}
+./tetris IP_DU_SERVEUR_LINUX
+\end{lstlisting}
+
+Aucune redirection de port n'est requise.
+
+% ========================
+\section{Important : copier-coller des commandes}
+
+Il est déconseillé de copier-coller directement les commandes depuis le PDF
+vers le terminal.
+
+Certains caractères peuvent être mal copiés (espaces, tirets, antislashs),
+ce qui provoque des erreurs difficiles à diagnostiquer.
+
+Il est recommandé de :
+\begin{itemize}
+    \item coller la commande dans un LLM (ex : ChatGPT)
+    \item vérifier et corriger la syntaxe
+    \item puis exécuter la commande dans le terminal
+\end{itemize}
+
+% ========================
+\section{Remarques finales}
+
+\begin{itemize}
+    \item Le serveur s'exécute sous WSL ou Linux natif
+    \item Les clients utilisent l'adresse IP de la machine serveur
+    \item Le port utilisé est \textbf{4242}
+    \item Les commandes PowerShell doivent être exécutées en administrateur
+    \item En cas de problème réseau, vérifier que le serveur écoute sur \texttt{0.0.0.0}
+\end{itemize}
+
+\end{document}
