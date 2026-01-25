@@ -303,9 +303,9 @@ class Game {
 
     int calcscore0(int nb) {
         if (nb==1) return 40;
-        if (nb==2) return 100-40;
-        if (nb==3) return 300-100-40;
-        if (nb==4) return 1200-200;
+        if (nb==2) return 100;
+        if (nb==3) return 300;
+        if (nb==4) return 1200;
         return 0;
     }
 

@@ -15,6 +15,7 @@ bool connecting = false;
 bool waiting_opponent = true;
 const char* ip_serveur = "10.90.234.220";
 int max_chat = 0;
+bool opponent_quit = false;
 
 bool event(double time) {
     double current_time = GetTime();
