@@ -4,6 +4,7 @@
 #include "network.h"
 #include <string>
 #include <csignal>
+#include <algorithm>
 
 // ─────────────────────────────────────────────
 //  Machine à états
@@ -61,8 +62,9 @@ int main(int argc, char** argv) {
     SetSoundVolume(jeu.destroy_sound, 1.0f);
     SetSoundVolume(jeu.rotate_sound, 0.5f);
 
-    State state = State::MENU;
+    State state      = State::MENU;
     bool online_mode = false;
+    bool paused      = false;  // pause solo (remplace jeu.start)
 
     // Volume slider
     float volume = 0.5f;
@@ -70,7 +72,7 @@ int main(int argc, char** argv) {
     Rectangle sliderKnob = {320 + 150 * volume - 6, 574, 12, 16};
     bool dragging = false;
 
-    // Boutons principaux
+    // Boutons menu
     Rectangle btn_solo   = {320, 490, 120, 40};
     Rectangle btn_online = {450, 490, 120, 40};
 
@@ -99,9 +101,8 @@ int main(int argc, char** argv) {
                 std::string msg = network_pop_message();
 
                 if (msg == "MATCH_START") {
-                    state = State::PLAYING;
-                    jeu.waiting = false;
-                    jeu.start   = true;
+                    state  = State::PLAYING;
+                    paused = false;
                     jeu.set_msg("C'est parti !");
                 }
                 else if (msg == "OPPONENT_LEFT") {
@@ -110,34 +111,32 @@ int main(int argc, char** argv) {
                     state = State::GAMEOVER;
                 }
                 else {
-                    jeu.apply_network_message(msg);
-                }
-
-                // Vérifier si la partie online est finie (GAMEOVER reçu)
-                if (jeu.fin_partie_online) {
-                    jeu.fin_partie_online = false;
-                    disconnect();
-                    state = State::GAMEOVER;
+                    // apply_network_message retourne true si victoire
+                    bool victoire = jeu.apply_network_message(msg);
+                    if (victoire) {
+                        disconnect();
+                        state = State::GAMEOVER;
+                    }
                 }
             }
         }
 
         // ─── Logique de jeu ───────────────────────────
-        if (state == State::PLAYING) {
+        if (state == State::PLAYING && !paused) {
             jeu.input();
             if (event(0.2 / (jeu.get_niveau() + 1)))
                 jeu.move_down();
 
             // Défaite locale
             if (jeu.justLost) {
-                if (online_mode) {
+                if (online_mode && is_connected()) {
                     network_send("GAMEOVER\n");
                     disconnect();
                 }
                 state = State::GAMEOVER;
             }
 
-            // Envoyer les lignes gagnées à l'adversaire
+            // Envoyer les lignes à l'adversaire
             if (jeu.linesToSend > 0 && online_mode && is_connected()) {
                 network_send("LINES|" + std::to_string(jeu.linesToSend) + "\n");
                 jeu.linesToSend = 0;
@@ -148,17 +147,16 @@ int main(int argc, char** argv) {
         BeginDrawing();
         ClearBackground(darkblue);
 
-        // Grille + pièce suivante
         jeu.dessiner();
         jeu.dessiner_next();
         jeu.destroy();
 
-        // Labels fixes
+        // Labels
         DrawText("Score", 345,  15, 38, WHITE);
         DrawText("level", 365, 125, 38, WHITE);
         DrawText("Next",  365, 210, 38, WHITE);
 
-        // Cadres
+        // Cadres UI
         DrawRectangleRounded({320,  55, 170,  60}, 0.3f, 6, panel);
         DrawRectangleRounded({320, 160, 170,  40}, 0.3f, 6, panel);
         DrawRectangleRounded({320, 260, 170, 140}, 0.3f, 6, panel);
@@ -183,8 +181,8 @@ int main(int argc, char** argv) {
 
                 if (button_clicked(btn_solo, mouse)) {
                     online_mode = false;
+                    paused      = false;
                     jeu.reset();
-                    jeu.start = true;
                     state = State::PLAYING;
                 }
                 if (button_clicked(btn_online, mouse)) {
@@ -204,7 +202,6 @@ int main(int argc, char** argv) {
 
             case State::WAITING: {
                 DrawText("En attente d'un adversaire...", 320, 490, 18, YELLOW);
-                // Bouton annuler
                 Rectangle btn_cancel = {320, 530, 150, 36};
                 draw_button(btn_cancel, "Annuler", RED);
                 if (button_clicked(btn_cancel, mouse)) {
@@ -216,57 +213,59 @@ int main(int argc, char** argv) {
             }
 
             case State::PLAYING: {
-                // Bouton pause (solo uniquement)
+                // Pause uniquement en solo
                 if (!online_mode) {
-                    Rectangle btn_pause = {320, 490, 120, 40};
-                    Color col = jeu.start ? GREEN : RED;
-                    draw_button(btn_pause, jeu.start ? "PAUSE" : "REPRENDRE", col);
+                    Rectangle btn_pause = {320, 490, 150, 40};
+                    draw_button(btn_pause,
+                                paused ? "REPRENDRE" : "PAUSE",
+                                paused ? GREEN : RED);
                     if (button_clicked(btn_pause, mouse))
-                        jeu.start = !jeu.start;
+                        paused = !paused;
                 }
                 break;
             }
 
             case State::GAMEOVER: {
-                DrawText("GAME OVER", 330, 460, 30, RED);
-                Rectangle btn_retry  = {320, 510, 120, 40};
-                Rectangle btn_menu   = {450, 510, 120, 40};
+                DrawText(jeu.get_msg().c_str(), 330, 455, 28, YELLOW);
+                Rectangle btn_retry = {320, 510, 120, 40};
+                Rectangle btn_menu  = {450, 510, 120, 40};
                 draw_button(btn_retry, "REJOUER", GREEN);
                 draw_button(btn_menu,  "MENU",    BLUE);
 
                 if (button_clicked(btn_retry, mouse)) {
                     jeu.reset();
+                    paused = false;
                     if (online_mode) {
                         network_connect(ip_serveur);
                         state = State::CONNECTING;
                         jeu.set_msg("Connexion...");
                     } else {
-                        jeu.start = true;
                         state = State::PLAYING;
                     }
                 }
                 if (button_clicked(btn_menu, mouse)) {
                     jeu.reset();
                     online_mode = false;
-                    state = State::MENU;
+                    paused      = false;
+                    state       = State::MENU;
                 }
                 break;
             }
         }
 
-        // ─── Chat (visible seulement en online) ───────
+        // ─── Chat (online seulement) ──────────────────
         if (online_mode && (state == State::PLAYING || state == State::WAITING)) {
-            auto send_chat = [&](Rectangle btn, const char* label, const char* msg_text) {
+            auto send_chat = [&](Rectangle btn, const char* label, const char* text) {
                 DrawRectangleRounded(btn, 0.3f, 6, WHITE);
                 DrawText(label, (int)(btn.x + 8), (int)(btn.y + 12), 15, BLACK);
                 if (button_clicked(btn, mouse) && is_connected()) {
-                    network_send(std::string("CHAT|") + msg_text + "\n");
-                    jeu.ajouter_msg(msg_text, false);
+                    network_send(std::string("CHAT|") + text + "\n");
+                    jeu.ajouter_msg(text, false);
                     jeu.max_chat++;
                 }
             };
 
-            send_chat(btn_gl,   "Good\nluck!", "Good luck!");
+            send_chat(btn_gl,   "Good\nluck!",   "Good luck!");
             send_chat(btn_wp,   "Well\nplayed!", "Well Played!");
             send_chat(btn_wow,  "Wow!",          "Wow!");
             send_chat(btn_thx,  "Thanks!",       "Thanks!");
