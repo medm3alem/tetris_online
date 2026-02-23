@@ -1,410 +1,302 @@
 #include "raylib.h"
 #include "objets.h"
 #include "game.h"
-#include <string>
 #include "network.h"
+#include <string>
 #include <csignal>
 
+// ─────────────────────────────────────────────
+//  Machine à états
+// ─────────────────────────────────────────────
+enum class State {
+    MENU,        // Accueil, choix solo/online
+    CONNECTING,  // Tentative de connexion TCP
+    WAITING,     // Connecté, attend l'adversaire
+    PLAYING,     // Partie en cours
+    GAMEOVER     // Partie terminée (solo ou online)
+};
 
+// ─────────────────────────────────────────────
+//  Timer pour move_down
+// ─────────────────────────────────────────────
 double last_update = 0;
-bool connected = false;
-bool started = false;
-bool block_start = false;
-bool block_mode = false;
-bool connecting = false;
-bool waiting_opponent = true;
-const char* ip_serveur = "10.90.234.220";
-int max_chat = 0;
-bool opponent_quit = false;
-
-bool event(double time) {
-    double current_time = GetTime();
-    if (current_time - last_update > time) {
-        last_update = current_time;
+bool event(double interval) {
+    double now = GetTime();
+    if (now - last_update > interval) {
+        last_update = now;
         return true;
     }
     return false;
 }
 
+// ─────────────────────────────────────────────
+//  Helpers UI
+// ─────────────────────────────────────────────
+void draw_button(Rectangle r, const char* text, Color col) {
+    DrawRectangleRounded(r, 0.3f, 6, col);
+    DrawText(text, (int)(r.x + 10), (int)(r.y + 10), 20, WHITE);
+}
 
+bool button_clicked(Rectangle r, Vector2 mouse) {
+    return CheckCollisionPointRec(mouse, r) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+}
 
+// ─────────────────────────────────────────────
+//  Main
+// ─────────────────────────────────────────────
 int main(int argc, char** argv) {
+    signal(SIGPIPE, SIG_IGN);
 
-    signal(SIGPIPE, SIG_IGN); // pour ignorer quand on envoie sur une socket fermée
+    const char* ip_serveur = (argc >= 2) ? argv[1] : "127.0.0.1";
 
-    Color darkblue = {44,44,127, 255};
-    InitWindow(780, 620, "TETRIS");
+    Color darkblue = {44, 44, 127, 255};
+    Color panel    = {59, 85, 162, 255};
+
+    InitWindow(780, 620, "TETRIS ONLINE");
     InitAudioDevice();
-    //SetAudioStreamBufferSizeDefault(4096);
     SetTargetFPS(60);
+
     Game jeu = Game();
-
-//jeu.mode : false solo
-//            true en ligne
-
-
-    if (argc>=2){
-        ip_serveur = argv[1];
-    }
-
-
     SetMusicVolume(jeu.music, 0.3f);
     SetSoundVolume(jeu.destroy_sound, 1.0f);
     SetSoundVolume(jeu.rotate_sound, 0.5f);
-    ClearBackground(darkblue);
 
+    State state = State::MENU;
+    bool online_mode = false;
+
+    // Volume slider
     float volume = 0.5f;
-
-    Rectangle sliderBar   = { 320, 580, 150, 8 };
-    Rectangle sliderKnob  = { 320 + 150 * volume - 6, 574, 12, 16 };
-
+    Rectangle sliderBar  = {320, 580, 150, 8};
+    Rectangle sliderKnob = {320 + 150 * volume - 6, 574, 12, 16};
     bool dragging = false;
+
+    // Boutons principaux
+    Rectangle btn_solo   = {320, 490, 120, 40};
+    Rectangle btn_online = {450, 490, 120, 40};
+
+    // Boutons chat
+    Rectangle btn_gl   = {530,  30, 60, 50};
+    Rectangle btn_wp   = {620,  30, 60, 50};
+    Rectangle btn_wow  = {700,  30, 60, 50};
+    Rectangle btn_thx  = {530, 100, 60, 50};
+    Rectangle btn_gg   = {620, 100, 60, 50};
+    Rectangle btn_oups = {700, 100, 60, 50};
 
     while (!WindowShouldClose()) {
         UpdateMusicStream(jeu.music);
+        Vector2 mouse = GetMousePosition();
 
-
-        if (jeu.mode && !connected && !connecting) {
-            // On vient de passer en mode online
-            std::cout << "Switching to ONLINE mode - connecting to server..." << std::endl;
-            network_connect(ip_serveur);
-            connecting = true;
-        }
-
-        if (jeu.mode && !connected && is_connected()) {
-            // Connexion établie
-            std::cout << "Connected to server!" << std::endl;
+        // ─── Transitions réseau ───────────────────────
+        if (state == State::CONNECTING && is_connected()) {
             network_start_listener();
-            connected = true;
-            connecting = false;
             network_send("READY\n");
+            state = State::WAITING;
+            jeu.set_msg("En attente d'un adversaire...");
         }
 
-
-        if (!jeu.mode && connected) {
-            // On vient de passer en mode solo
-            std::cout << "Switching to SOLO mode - disconnecting..." << std::endl;
-            disconnect();
-            connected = false;
-            connecting = false;
-        }
-
-        if (jeu.fin_partie_online && connected) {
-            // La partie en ligne est terminée
-            std::cout << "Online game finished - disconnecting..." << std::endl;
-
-            jeu.fin_partie_online = false;
-            disconnect();
-            jeu.reset();
-
-            jeu.set_msg("Victory!");
-            block_mode = false;
-            block_start = false;
-            jeu.mode = false;
-            jeu.justLost = false; 
-            connected = false;
-            connecting = false;
-
-
-
-        }
-
-        if (connected){
+        if (state == State::WAITING || state == State::PLAYING) {
             while (network_has_message()) {
                 std::string msg = network_pop_message();
 
                 if (msg == "MATCH_START") {
-                    std::cout << "Opponent found!\nStarting game" << std::endl;
-                    jeu.set_msg("Opponent found!\n Starting...");
-                    waiting_opponent = false;
+                    state = State::PLAYING;
                     jeu.waiting = false;
-                    jeu.start = true;
-                    block_start = false;
+                    jeu.start   = true;
+                    jeu.set_msg("C'est parti !");
                 }
-                else jeu.apply_network_message(msg);
-                std::cout << "Processing message: " << msg << std::endl;
+                else if (msg == "OPPONENT_LEFT") {
+                    jeu.set_msg("Adversaire deconnecte.");
+                    disconnect();
+                    state = State::GAMEOVER;
+                }
+                else {
+                    jeu.apply_network_message(msg);
+                }
 
+                // Vérifier si la partie online est finie (GAMEOVER reçu)
+                if (jeu.fin_partie_online) {
+                    jeu.fin_partie_online = false;
+                    disconnect();
+                    state = State::GAMEOVER;
+                }
             }
         }
 
+        // ─── Logique de jeu ───────────────────────────
+        if (state == State::PLAYING) {
+            jeu.input();
+            if (event(0.2 / (jeu.get_niveau() + 1)))
+                jeu.move_down();
 
+            // Défaite locale
+            if (jeu.justLost) {
+                if (online_mode) {
+                    network_send("GAMEOVER\n");
+                    disconnect();
+                }
+                state = State::GAMEOVER;
+            }
 
+            // Envoyer les lignes gagnées à l'adversaire
+            if (jeu.linesToSend > 0 && online_mode && is_connected()) {
+                network_send("LINES|" + std::to_string(jeu.linesToSend) + "\n");
+                jeu.linesToSend = 0;
+            }
+        }
 
-        if (jeu.start && (!jeu.mode || !waiting_opponent)) jeu.input();
-        if (event(0.2/(jeu.get_niveau()+1)) && jeu.start && (!jeu.mode || !waiting_opponent)) jeu.move_down();
-
+        // ─── Dessin ───────────────────────────────────
         BeginDrawing();
         ClearBackground(darkblue);
-        DrawText("Score", 345,15, 38, WHITE);
-        DrawText("level", 365,125, 38, WHITE);
-        DrawText("Next", 365,210, 38, WHITE);
 
-
-        Color col_mode;
-        Color col_start;
-
-
-        Rectangle btn_mode = { 320, 490, 120, 40 };
-        Rectangle btn_start = { 450, 490, 120, 40 };
-
-
-
-        Vector2 mouse = GetMousePosition();
-
-        bool hover_mode = CheckCollisionPointRec(mouse, btn_mode);
-
-
-
-        if (hover_mode && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !block_mode && ! jeu.justLost) {
-            jeu.mode = ! jeu.mode;
-            if (jeu.mode){
-                block_start = true;
-                block_mode = true;
-                waiting_opponent = true;
-            }
-            else block_start = false;
-        }
-
-        bool hover_start = CheckCollisionPointRec(mouse, btn_start);
-
-        if (hover_start && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && (jeu.waiting || !jeu.mode) && ! jeu.justLost) {
-            jeu.start = !jeu.start;
-            started = true;
-            block_mode = true;
-            jeu.waiting = false;
-        }
-
-
-
-        if (! block_mode && !jeu.justLost) col_mode = jeu.mode ? GREEN : RED;
-        else {
-            col_mode = GRAY;
-        }
-
-
-        const char* text_start = "PAUSED";
-
-        if ((jeu.waiting || !jeu.mode) && !jeu.justLost) {
-            if (jeu.start) {
-                col_start = GREEN;
-                text_start = "START";
-            } else {
-                col_start = RED;
-                text_start = "PAUSED";
-            }
-        } else {
-            col_start = GRAY;
-            text_start = "START";
-        }
-
-
-
-        const char* text_mode = (jeu.mode) ? "ONLINE" : "SOLO";
-
-
-        DrawRectangleRounded(btn_mode, 0.3f, 6, col_mode);
-        DrawText(
-            text_mode,
-            btn_mode.x + 10,
-            btn_mode.y + 10,
-            20,
-            WHITE
-        );
-
-        DrawRectangleRounded(btn_start, 0.3f, 6, col_start);
-        DrawText(
-            text_start,
-            btn_start.x + 10,
-            btn_start.y + 10,
-            20,
-            WHITE
-        );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        // volume slider
-        DrawText("Volume", 320, 550, 20, WHITE);
-        DrawRectangleRounded(sliderBar, 0.5f, 6, GRAY);
-        DrawRectangleRounded(sliderKnob, 0.5f, 6, WHITE);
-
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
-            CheckCollisionPointRec(mouse, sliderKnob)) {
-            dragging = true;
-        }
-
-        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-            dragging = false;
-        }
-
-        if (dragging) {
-            sliderKnob.x = mouse.x - sliderKnob.width / 2;
-
-            if (sliderKnob.x < sliderBar.x)
-                sliderKnob.x = sliderBar.x;
-
-            if (sliderKnob.x > sliderBar.x + sliderBar.width - sliderKnob.width)
-                sliderKnob.x = sliderBar.x + sliderBar.width - sliderKnob.width;
-
-            volume = (sliderKnob.x - sliderBar.x) /
-                     (sliderBar.width - sliderKnob.width);
-
-            SetMasterVolume(volume);
-        }
-        // fin volume slider
-
-
-        DrawText(jeu.get_msg().c_str(), 320, 420, 27, WHITE);
-        DrawRectangleRounded({320, 55, 170, 60}, 0.3, 6, {59, 85, 162, 255}); // cadre score
-        DrawRectangleRounded({320, 260, 170, 140}, 0.3, 6, {59, 85, 162, 255});// cadre next
-        DrawRectangleRounded({320, 160, 170, 40}, 0.3, 6, {59, 85, 162, 255});// cadre level
-
-
-
-
-
-
-        //chat
-
-        Rectangle btn_gl = { 530, 30, 60, 50 };
-        Rectangle btn_wp = { 620, 30, 60, 50 };
-        Rectangle btn_wow = { 700, 30, 60, 50 };
-        Rectangle btn_thx = { 530, 100, 60, 50 };
-        Rectangle btn_gg = { 620, 100, 60, 50 };
-        Rectangle btn_oups = { 700, 100, 60, 50 };
-
-        bool hover_gl = CheckCollisionPointRec(mouse, btn_gl);
-        bool hover_wp = CheckCollisionPointRec(mouse, btn_wp);
-        bool hover_wow = CheckCollisionPointRec(mouse, btn_wow);
-        bool hover_thx = CheckCollisionPointRec(mouse, btn_thx);
-        bool hover_gg = CheckCollisionPointRec(mouse, btn_gg);
-        bool hover_oups = CheckCollisionPointRec(mouse, btn_oups);
-
-        
-
-        DrawRectangleRounded(btn_gl, 0.3f, 6, WHITE);
-        DrawText("Good\nluck!", btn_gl.x + 10, btn_gl.y + 7, 15, BLACK);
-
-        DrawRectangleRounded(btn_wp, 0.3f, 6, WHITE);
-        DrawText("Well\nplayed!", btn_wp.x + 10, btn_wp.y + 7, 15, BLACK);
-
-        DrawRectangleRounded(btn_wow, 0.3f, 6, WHITE);
-        DrawText("Wow!", btn_wow.x + 12, btn_wow.y + 13, 20, BLACK);
-
-        DrawRectangleRounded(btn_thx, 0.3f, 6, WHITE);
-        DrawText("Thanks!", btn_thx.x + 4, btn_thx.y + 13, 14, BLACK);
-
-        DrawRectangleRounded(btn_gg, 0.3f, 6, WHITE);
-        DrawText("Good\nGame!", btn_gg.x + 10, btn_gg.y + 7, 15, BLACK);
-
-        DrawRectangleRounded(btn_oups, 0.3f, 6, WHITE);
-        DrawText("Oops!", btn_oups.x + 10, btn_oups.y + 13, 15, BLACK);
-
-
-        if (hover_gl && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
-            network_send("CHAT|Good luck!\n");
-            jeu.ajouter_msg("Good luck!", false);
-            jeu.max_chat +=1;
-        }
-
-        if (hover_wp && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
-            network_send("CHAT|Well Played!\n");
-            jeu.ajouter_msg("Well Played!", false);
-            jeu.max_chat +=1;
-        }
-
-        if (hover_wow && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
-            network_send("CHAT|Wow!\n");
-            jeu.ajouter_msg("Wow!", false);
-            jeu.max_chat +=1;
-        }
-
-        if (hover_thx && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
-            network_send("CHAT|Thanks!\n");
-            jeu.ajouter_msg("Thanks!", false);
-            jeu.max_chat +=1;
-        }
-
-        if (hover_gg && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
-            network_send("CHAT|Good Game!\n");
-            jeu.ajouter_msg("Good Game!", false);
-            jeu.max_chat +=1;
-        }
-
-        if (hover_oups && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && connected) {
-            network_send("CHAT|Oops!\n");
-            jeu.ajouter_msg("Oops!", false);
-            jeu.max_chat +=1;
-        }
-
-        DrawRectangleRounded({530, 180, 230, 300}, 0.3, 6, {59, 85, 162, 255});// cadre chat
-
-        //fin chat
-
-
-
-
-        
-
+        // Grille + pièce suivante
         jeu.dessiner();
         jeu.dessiner_next();
         jeu.destroy();
-        jeu.draw_msg();
 
-        // Envoi des lignes à l'adversaire
-        if (jeu.linesToSend > 0 && connected) {
-            std::string msg = "LINES|" + std::to_string(jeu.linesToSend) + "\n";
-            network_send(msg);
-            std::cout << "Sending " << jeu.linesToSend << " lines to opponent" << std::endl;
-            jeu.linesToSend = 0;
-        }
+        // Labels fixes
+        DrawText("Score", 345,  15, 38, WHITE);
+        DrawText("level", 365, 125, 38, WHITE);
+        DrawText("Next",  365, 210, 38, WHITE);
 
-        if (jeu.justLost){
-            started = false;
-            block_mode = false;
-            block_start = false;
-        }
+        // Cadres
+        DrawRectangleRounded({320,  55, 170,  60}, 0.3f, 6, panel);
+        DrawRectangleRounded({320, 160, 170,  40}, 0.3f, 6, panel);
+        DrawRectangleRounded({320, 260, 170, 140}, 0.3f, 6, panel);
+        DrawRectangleRounded({530, 180, 230, 300}, 0.3f, 6, panel);
 
-        // Envoi du game over
-        if (jeu.justLost && connected) {
-
-            network_send("GAMEOVER\n");
-            std::cout << "Sending GAMEOVER" << std::endl;
-            jeu.justLost = false;
-            disconnect();
-            jeu.mode = false;
-            connected = false;
-            connecting = false;
-        }
-
-
-
-        char sc[10];
-        sprintf(sc, "%d", jeu.get_score());
-        DrawText(sc, 345,70, 27, BLACK);
-
-        char lvl[10];
+        // Score + niveau
+        char sc[16], lvl[16];
+        sprintf(sc,  "%d", jeu.get_score());
         sprintf(lvl, "%d", jeu.get_niveau());
-        DrawText(lvl, 345,168, 27, BLACK);
+        DrawText(sc,  345,  70, 27, BLACK);
+        DrawText(lvl, 345, 168, 27, BLACK);
+
+        // Message d'état
+        DrawText(jeu.get_msg().c_str(), 320, 420, 22, WHITE);
+
+        // ─── Boutons selon l'état ─────────────────────
+        switch (state) {
+
+            case State::MENU: {
+                draw_button(btn_solo,   "SOLO",   GREEN);
+                draw_button(btn_online, "ONLINE", BLUE);
+
+                if (button_clicked(btn_solo, mouse)) {
+                    online_mode = false;
+                    jeu.reset();
+                    jeu.start = true;
+                    state = State::PLAYING;
+                }
+                if (button_clicked(btn_online, mouse)) {
+                    online_mode = true;
+                    jeu.reset();
+                    network_connect(ip_serveur);
+                    state = State::CONNECTING;
+                    jeu.set_msg("Connexion...");
+                }
+                break;
+            }
+
+            case State::CONNECTING: {
+                DrawText("Connexion au serveur...", 320, 490, 20, YELLOW);
+                break;
+            }
+
+            case State::WAITING: {
+                DrawText("En attente d'un adversaire...", 320, 490, 18, YELLOW);
+                // Bouton annuler
+                Rectangle btn_cancel = {320, 530, 150, 36};
+                draw_button(btn_cancel, "Annuler", RED);
+                if (button_clicked(btn_cancel, mouse)) {
+                    disconnect();
+                    jeu.reset();
+                    state = State::MENU;
+                }
+                break;
+            }
+
+            case State::PLAYING: {
+                // Bouton pause (solo uniquement)
+                if (!online_mode) {
+                    Rectangle btn_pause = {320, 490, 120, 40};
+                    Color col = jeu.start ? GREEN : RED;
+                    draw_button(btn_pause, jeu.start ? "PAUSE" : "REPRENDRE", col);
+                    if (button_clicked(btn_pause, mouse))
+                        jeu.start = !jeu.start;
+                }
+                break;
+            }
+
+            case State::GAMEOVER: {
+                DrawText("GAME OVER", 330, 460, 30, RED);
+                Rectangle btn_retry  = {320, 510, 120, 40};
+                Rectangle btn_menu   = {450, 510, 120, 40};
+                draw_button(btn_retry, "REJOUER", GREEN);
+                draw_button(btn_menu,  "MENU",    BLUE);
+
+                if (button_clicked(btn_retry, mouse)) {
+                    jeu.reset();
+                    if (online_mode) {
+                        network_connect(ip_serveur);
+                        state = State::CONNECTING;
+                        jeu.set_msg("Connexion...");
+                    } else {
+                        jeu.start = true;
+                        state = State::PLAYING;
+                    }
+                }
+                if (button_clicked(btn_menu, mouse)) {
+                    jeu.reset();
+                    online_mode = false;
+                    state = State::MENU;
+                }
+                break;
+            }
+        }
+
+        // ─── Chat (visible seulement en online) ───────
+        if (online_mode && (state == State::PLAYING || state == State::WAITING)) {
+            auto send_chat = [&](Rectangle btn, const char* label, const char* msg_text) {
+                DrawRectangleRounded(btn, 0.3f, 6, WHITE);
+                DrawText(label, (int)(btn.x + 8), (int)(btn.y + 12), 15, BLACK);
+                if (button_clicked(btn, mouse) && is_connected()) {
+                    network_send(std::string("CHAT|") + msg_text + "\n");
+                    jeu.ajouter_msg(msg_text, false);
+                    jeu.max_chat++;
+                }
+            };
+
+            send_chat(btn_gl,   "Good\nluck!", "Good luck!");
+            send_chat(btn_wp,   "Well\nplayed!", "Well Played!");
+            send_chat(btn_wow,  "Wow!",          "Wow!");
+            send_chat(btn_thx,  "Thanks!",       "Thanks!");
+            send_chat(btn_gg,   "Good\nGame!",   "Good Game!");
+            send_chat(btn_oups, "Oops!",         "Oops!");
+
+            jeu.draw_msg();
+        }
+
+        // ─── Volume slider ────────────────────────────
+        DrawText("Volume", 320, 550, 20, WHITE);
+        DrawRectangleRounded(sliderBar,  0.5f, 6, GRAY);
+        DrawRectangleRounded(sliderKnob, 0.5f, 6, WHITE);
+
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+            CheckCollisionPointRec(mouse, sliderKnob)) dragging = true;
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) dragging = false;
+
+        if (dragging) {
+            sliderKnob.x = mouse.x - sliderKnob.width / 2;
+            sliderKnob.x = std::max(sliderKnob.x, sliderBar.x);
+            sliderKnob.x = std::min(sliderKnob.x, sliderBar.x + sliderBar.width - sliderKnob.width);
+            volume = (sliderKnob.x - sliderBar.x) / (sliderBar.width - sliderKnob.width);
+            SetMasterVolume(volume);
+        }
 
         EndDrawing();
     }
 
-    if (connected) {
-        disconnect();
-    }
-
+    if (is_connected()) disconnect();
     CloseAudioDevice();
     CloseWindow();
     return 0;

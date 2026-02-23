@@ -8,109 +8,56 @@
 #include <set>
 #include "network.h"
 
-
 class Game {
 
-    private:
+private:
     int score;
     int niveau;
     std::string msg;
 
-    public:
+public:
     object grid;
     std::vector<object> objs;
     object current;
     object next;
     bool justLost;
-    bool waiting;
     int linesToSend;
-    bool mode;
-    bool start;
-    bool fin_partie_online;
     Music music;
     Sound rotate_sound;
     Sound destroy_sound;
-    int max_chat = 0;
+
+    // Chat
+    int max_chat;
     std::vector<std::string> chat_messages;
     std::vector<bool> chat_recu;
 
+    // ─── Getters / Setters ────────────────────────
+    std::string get_msg()   const { return msg; }
+    int get_score()         const { return score; }
+    int get_niveau()        const { return niveau; }
+    void set_msg(std::string m)   { msg = m; }
+    void set_score(int s)         { score = s; }
+    void set_niveau(int n)        { niveau = n; }
 
-    std::string get_msg() {
-        return msg;
-    }
-    int get_score() {
-        return score;
-    }
-    int get_niveau() {
-        return niveau;
-    }
-
-    void set_msg(std::string m) {
-        msg = m;
-    }
-
-    void set_score(int s) {
-        score = s;
-    }
-    void set_niveau(int n) {
-        niveau = n;
-    }
-
-
-    std::vector<object> get_all_objects() {
-        object objT = object();
-        objT.make_T();
-        object objO = object();
-        objO.make_O();
-        object objI = object();
-        objI.make_I();
-        object objJ = object();
-        objJ.make_J();
-        object objL = object();
-        objL.make_L();
-        object objS = object();
-        objS.make_S();
-        object objZ = object();
-        objZ.make_Z();
-        return  {objT, objO, objI, objJ, objL, objS, objZ};
-    }
-
-    object get_random_object() {
-        if (objs.empty()) {
-            objs = get_all_objects();
-        }
-
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dist(0, objs.size() -1);
-
-        int rand_num = dist(gen);
-        object myobj= objs[rand_num];
-        objs.erase(objs.begin() + rand_num);
-        return myobj;
-    }
-
+    // ─── Constructeur / Destructeur ───────────────
     Game() {
-        grid = object();
-        objs = get_all_objects();
+        grid    = object();
+        objs    = get_all_objects();
         current = get_random_object();
-        next = get_random_object();
+        next    = get_random_object();
         set_score(0);
         set_niveau(0);
         set_msg("");
-        justLost = false;
+        justLost    = false;
         linesToSend = 0;
-        music = LoadMusicStream("sounds/cover.wav");
-        PlayMusicStream(music);
-        rotate_sound = LoadSound("sounds/rotate.wav");
-        destroy_sound = LoadSound("sounds/destroy.wav");
-        mode = false;
-        start = false;
-        fin_partie_online = false;
-        waiting = true;
-        int max_chat = 0;
+        max_chat    = 0;
         chat_messages = std::vector<std::string>(10, "");
-        chat_recu = std::vector<bool>(10, false);
+        chat_recu     = std::vector<bool>(10, false);
+
+        music         = LoadMusicStream("sounds/cover.wav");
+        rotate_sound  = LoadSound("sounds/rotate.wav");
+        destroy_sound = LoadSound("sounds/destroy.wav");
+        PlayMusicStream(music);
     }
 
     ~Game() {
@@ -119,140 +66,153 @@ class Game {
         UnloadSound(rotate_sound);
     }
 
-    void apply_network_message(const std::string& msg) {
-        if (msg.rfind("LINES|", 0) == 0) {
-            int n = std::stoi(msg.substr(6));
-            for (int i = 0; i < n; i++)
-                add_garbage_line();
-            set_msg("ATTACK !");
-        }
-        else if (msg == "GAMEOVER") {
-            set_msg("VICTOIRE!");
-            fin_partie_online = true;
-            start = false;
-        }
-        else if (msg.rfind("CHAT|", 0) == 0) {
-            std::string chat_msg = msg.substr(5);
-            ajouter_msg(chat_msg, true);
-            max_chat +=1;
-        }
+    // ─── Pièces ───────────────────────────────────
+    std::vector<object> get_all_objects() {
+        object objT, objO, objI, objJ, objL, objS, objZ;
+        objT.make_T(); objO.make_O(); objI.make_I();
+        objJ.make_J(); objL.make_L(); objS.make_S(); objZ.make_Z();
+        return {objT, objO, objI, objJ, objL, objS, objZ};
     }
-    void ajouter_msg(std::string message, bool recu){
-        if (max_chat >=10){
-            for (int i = 0; i < 10; i++) {
+
+    object get_random_object() {
+        if (objs.empty()) objs = get_all_objects();
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dist(0, (int)objs.size() - 1);
+
+        int idx = dist(gen);
+        object obj = objs[idx];
+        objs.erase(objs.begin() + idx);
+        return obj;
+    }
+
+    // ─── Reset ────────────────────────────────────
+    // Remet le jeu à zéro sans toucher aux sons
+    void reset() {
+        grid    = object();
+        objs    = get_all_objects();
+        current = get_random_object();
+        next    = get_random_object();
+        set_score(0);
+        set_niveau(0);
+        set_msg("");
+        justLost    = false;
+        linesToSend = 0;
+        max_chat    = 0;
+        for (int i = 0; i < 10; i++) {
             chat_messages[i].clear();
             chat_recu[i] = false;
-            }
-            max_chat = 0;
         }
-        chat_messages[max_chat] = message;
-        chat_recu[max_chat] = recu;
     }
-    void draw_msg(){
-        for (int i = 0; i < max_chat; i++) {
-            float dec = chat_recu[i] ?  0.0 : 120.0;
-            Color col = chat_recu[i] ? RED : BLACK;
-            float y = 175 + 30*i;
-            Rectangle cadre = { 540 + dec, y, 100, 50 };
-            //DrawRectangleRounded(cadre, 0.3f, 6, WHITE);
-            DrawText(chat_messages[i].c_str(), cadre.x + 10, cadre.y + 13, 15, col);
+
+    // ─── Réseau ───────────────────────────────────
+    // Retourne true si la partie online est terminée (victoire)
+    bool apply_network_message(const std::string& msg) {
+        if (msg.rfind("LINES|", 0) == 0) {
+            int n = std::stoi(msg.substr(6));
+            for (int i = 0; i < n; i++) add_garbage_line();
+            set_msg("ATTAQUE !");
+            return false;
         }
+        if (msg == "GAMEOVER") {
+            set_msg("VICTOIRE !");
+            return true;   // signale la fin à main.cpp
+        }
+        if (msg.rfind("CHAT|", 0) == 0) {
+            ajouter_msg(msg.substr(5), true);
+            max_chat++;
+            return false;
+        }
+        return false;
     }
 
     void add_garbage_line() {
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dist(0, grid.line -1);
+        std::uniform_int_distribution<> dist(0, grid.line - 1);
+        int hole = dist(gen);
 
-        int rand_num = dist(gen);
-        int i=grid.line-1;
-        int j=grid.column-1;
-        bool found = false;
-        for (; j >= 0; j--) {
-            i=grid.line-1;
-            found = true;
-            for (; i>=0; i--) {
-                if (grid.matrice[i][j]!=0) found = false;
-            }
-            if (found) break ;
+        // Trouver la première colonne vide en partant de la droite
+        int target_col = grid.column - 1;
+        for (int j = grid.column - 1; j >= 0; j--) {
+            bool empty = true;
+            for (int i = 0; i < grid.line; i++)
+                if (grid.matrice[i][j] != 0) { empty = false; break; }
+            if (empty) { target_col = j; break; }
         }
-        for (int i = 0; i<grid.line; i++) if (i!=rand_num) grid.matrice[i][j] = 1;
+
+        for (int i = 0; i < grid.line; i++)
+            if (i != hole) grid.matrice[i][target_col] = 1;
     }
 
+    // ─── Chat ─────────────────────────────────────
+    void ajouter_msg(const std::string& message, bool recu) {
+        if (max_chat >= 10) {
+            for (int i = 0; i < 10; i++) {
+                chat_messages[i].clear();
+                chat_recu[i] = false;
+            }
+            max_chat = 0;
+        }
+        chat_messages[max_chat] = message;
+        chat_recu[max_chat]     = recu;
+    }
+
+    void draw_msg() {
+        for (int i = 0; i < max_chat; i++) {
+            float  dec = chat_recu[i] ? 0.0f : 120.0f;
+            Color  col = chat_recu[i] ? RED : BLACK;
+            float  y   = 195 + 28 * i;
+            DrawText(chat_messages[i].c_str(), 550 + (int)dec, (int)y, 15, col);
+        }
+    }
+
+    // ─── Rendu ────────────────────────────────────
     void dessiner() {
-        int x = grid.line;
-        int y = grid.column;
-        object temp1 = object(x, y);
-        object temp2 = object(x, y);
-        temp1 = grid;
-        temp2 = current;
-        if (temp2.checkintersection(temp1)) temp1.add(temp2);
-        if (!loose()) temp1.dessiner();
-        else grid.dessiner();
+        object temp = grid;
+        if (current.checkintersection(grid)) temp.add(current);
+        if (!loose()) temp.dessiner();
+        else          grid.dessiner();
     }
 
-    void reset() {
-        grid = object();
-        objs = get_all_objects();
-        current = get_random_object();
-        next = get_random_object();
-        set_score(0);
-        set_niveau(0);
-        set_msg("");
-        justLost = false;
-        linesToSend = 0;
-        mode = false;
-        start = false;
-        fin_partie_online = false;
-        waiting = true;
-        max_chat = 0;
-
-        for (int i = 0; i < 10; i++) {
-            chat_messages[i].clear();
-            chat_recu[i] = false;
-            }
-
-        
-    }
-
-    void input() {
-        int pressed_key = GetKeyPressed();
-        if (pressed_key != 0 && loose()) {
-            reset();
+    void dessiner_next() {
+        std::vector<std::vector<int>> P = next.get_pos();
+        for (int i = 0; i < 4; i++) {
+            int col = next.matrice[P[0][i]][P[1][i]];
+            DrawRectangle(P[0][i] * next.cellsize + 255,
+                          P[1][i] * next.cellsize + 281,
+                          next.cellsize - 1, next.cellsize - 1,
+                          next.GetCellColors()[col]);
         }
-        switch (pressed_key) {
+    }
+
+    // ─── Input ────────────────────────────────────
+    void input() {
+        int key = GetKeyPressed();
+        switch (key) {
             case KEY_RIGHT:
-                if (current.check_right(grid)) {
-                    current.translate_d();
-                    break;
-                }
-                else break;
-
+                if (current.check_right(grid)) current.translate_d();
+                break;
             case KEY_LEFT:
-                if (current.check_left(grid)) {
-                    current.translate_g();
-                    break;
-                }
-                else break;
-
+                if (current.check_left(grid))  current.translate_g();
+                break;
             case KEY_DOWN:
-                if (current.check_collision(grid)==true && !loose() && current.checkintersection(grid)) {
+                if (current.check_collision(grid) && !loose() && current.checkintersection(grid)) {
                     grid.add(current);
                     current = next;
-                    next = get_random_object();
+                    next    = get_random_object();
+                } else {
+                    current.translate_bas();
                 }
-                else current.translate_bas();
                 break;
-
             case KEY_UP:
-                if (current.check_rotate(grid)) {
-                    rotate();
-                    break;
-                }
-                else break;
-
+                if (current.check_rotate(grid)) rotate();
+                break;
             case KEY_ENTER:
                 current.translate_haut();
+                break;
+            default:
                 break;
         }
     }
@@ -262,35 +222,37 @@ class Game {
         current.rotate();
     }
 
+    // ─── Gravité ──────────────────────────────────
     void move_down() {
-        if (!loose()) {
-            if (!current.checkintersection(grid)) {
-                std::vector<std::vector<int>> P = current.get_pos();
-                std::set<int> s(P[1].begin(), P[1].end());
-                int n = s.size();
-                for (int j = 0; j<n; j++) {
-                    for (int i=0; i<current.line; i++) {
-                        current.matrice[i][j] = 0;
-                        current.translate_haut();
-                    }
+        if (loose()) return;
+
+        if (!current.checkintersection(grid)) {
+            // Pièce en intersection : la remonter
+            std::vector<std::vector<int>> P = current.get_pos();
+            std::set<int> cols(P[1].begin(), P[1].end());
+            for (int j = 0; j < (int)cols.size(); j++) {
+                for (int i = 0; i < current.line; i++) {
+                    current.matrice[i][j] = 0;
+                    current.translate_haut();
                 }
             }
-            if (current.check_collision(grid)) {
-                grid.add(current);
-                if (!loose()) {
-                    current = next;
-                    next = get_random_object();
-                }
+        }
+
+        if (current.check_collision(grid)) {
+            grid.add(current);
+            if (!loose()) {
+                current = next;
+                next    = get_random_object();
             }
-            else {
-                current.translate_bas();
-            }
+        } else {
+            current.translate_bas();
         }
     }
 
+    // ─── Défaite ──────────────────────────────────
     bool loose() {
-        for (int i=0; i < grid.line; i++) {
-            if (grid.matrice[i][0]!=0) {
+        for (int i = 0; i < grid.line; i++) {
+            if (grid.matrice[i][0] != 0) {
                 if (!justLost) {
                     set_msg("GAME OVER");
                     justLost = true;
@@ -301,38 +263,26 @@ class Game {
         return false;
     }
 
-    int calcscore0(int nb) {
-        if (nb==1) return 40;
-        if (nb==2) return 100;
-        if (nb==3) return 300;
-        if (nb==4) return 1200;
-        return 0;
-    }
-
+    // ─── Score ────────────────────────────────────
     int calcscore(int nb, int niv) {
-        int p = calcscore0(nb);
-        return p*(niv+1);
-    }
-
-    void dessiner_next() {
-        std::vector<std::vector<int>> P = next.get_pos();
-        for (int i=0; i < 4; i++) {
-            int ind_col = next.matrice[P[0][i]][P[1][i]];
-            DrawRectangle((P[0][i])*next.cellsize +255, P[1][i]*next.cellsize +281, next.cellsize-1, next.cellsize-1, next.GetCellColors()[ind_col]);
-        }
+        int base = 0;
+        if (nb == 1) base = 40;
+        else if (nb == 2) base = 100;
+        else if (nb == 3) base = 300;
+        else if (nb == 4) base = 1200;
+        return base * (niv + 1);
     }
 
     void destroy() {
         int nb = grid.destroy();
-        if (nb!=0) {
+        if (nb != 0) {
             PlaySound(destroy_sound);
-            int niv = get_niveau();
-            int sc = get_score() + calcscore(nb, niv);
-            set_score(sc) ;
-            set_niveau(sc/1000);
-            linesToSend = linesToSend + nb;
+            int sc = get_score() + calcscore(nb, get_niveau());
+            set_score(sc);
+            set_niveau(sc / 1000);
+            linesToSend += nb;
         }
     }
 };
 
-#endif //TETRISONLINE_GAME_H
+#endif // TETRISONLINE_GAME_H
