@@ -51,8 +51,8 @@ public:
         score=0;niveau=0;msg="";
         justLost=false;scoreChanged=false;linesToSend=0;
         opp_score=0;opp_niveau=0;max_chat=0;
-        chat_messages=std::vector<std::string>(10,"");
-        chat_recu=std::vector<bool>(10,false);
+        chat_messages=std::vector<std::string>(20,"");
+        chat_recu=std::vector<bool>(20,false);
         music=LoadMusicStream("sounds/cover.wav");
         rotate_sound=LoadSound("sounds/rotate.wav");
         destroy_sound=LoadSound("sounds/destroy.wav");
@@ -78,7 +78,7 @@ public:
         score=0;niveau=0;msg="";
         justLost=false;scoreChanged=false;linesToSend=0;
         opp_score=0;opp_niveau=0;max_chat=0;
-        for(int i=0;i<10;i++){chat_messages[i].clear();chat_recu[i]=false;}
+        for(int i=0;i<20;i++){chat_messages[i].clear();chat_recu[i]=false;}
     }
 
     bool apply_network_message(const std::string& m){
@@ -105,16 +105,40 @@ public:
     }
 
     void ajouter_msg(const std::string& message,bool recu){
-        if(max_chat>=10){for(int i=0;i<10;i++){chat_messages[i].clear();chat_recu[i]=false;}max_chat=0;}
-        chat_messages[max_chat]=message;chat_recu[max_chat]=recu;
+        // Buffer circulaire de 20 messages
+        int idx = max_chat % 20;
+        chat_messages[idx] = message;
+        chat_recu[idx]     = recu;
+        max_chat++;
     }
 
     // Messages : zone x=348..540, y=408..590
     void draw_msg(){
-        for(int i=0;i<max_chat;i++){
-            Color col=chat_recu[i]?ORANGE:SKYBLUE;
-            int x=chat_recu[i]?352:440;
-            DrawText(chat_messages[i].c_str(),x,435+i*24,14,col);
+        const int MSG_Y0   = 556;  // y début zone texte
+        const int LINE_H   = 22;   // hauteur par ligne
+        const int MAX_SHOW = 8;    // nb max de lignes visibles dans le box
+
+        // Récupérer les MAX_SHOW derniers messages depuis le buffer circulaire
+        int total = (max_chat < 20) ? max_chat : 20;
+        int show  = (total < MAX_SHOW) ? total : MAX_SHOW;
+
+        // Indices des messages à afficher (les plus récents)
+        for(int row=0; row<show; row++){
+            // index dans le buffer circulaire : du plus ancien au plus récent
+            int buf_idx = ((max_chat - show + row) % 20 + 20) % 20;
+            Color col = chat_recu[buf_idx] ? ORANGE : SKYBLUE;
+            int y = MSG_Y0 + row * LINE_H;
+            if(chat_recu[buf_idx]){
+                DrawText(">", 348, y, 13, {150,80,30,255});
+                DrawText(chat_messages[buf_idx].c_str(), 364, y, 13, col);
+            } else {
+                const char* txt = chat_messages[buf_idx].c_str();
+                int tw = MeasureText(txt, 13);
+                int x  = 762 - tw - 16;
+                if(x < 364) x = 364;
+                DrawText(txt, x, y, 13, col);
+                DrawText("<", 762 - MeasureText("<",13), y, 13, {30,100,150,255});
+            }
         }
     }
 
@@ -155,23 +179,26 @@ public:
         int mny=*std::min_element(P[1].begin(),P[1].end());
         int mxx=*std::max_element(P[0].begin(),P[0].end());
         int mxy=*std::max_element(P[1].begin(),P[1].end());
-        int pw=(mxy-mny+1)*CS, ph=(mxx-mnx+1)*CS;
+        // Rotation 90° : on utilise P[0] pour X et P[1] pour Y
+        // (comme la grille mais sans inversion — affichage naturel)
+        int pw=(mxx-mnx+1)*CS, ph=(mxy-mny+1)*CS;
         int ox=NX+NW/2-pw/2;
-        int oy=NY+NH/2-ph/2;
+        int oy=NY+NH/2-ph/2+12; // +12 pour descendre sous le label NEXT
         for(int i=0;i<4;i++){
             int c=next.matrice[P[0][i]][P[1][i]];
-            DrawRectangle(ox+(P[1][i]-mny)*CS, oy+(P[0][i]-mnx)*CS, CS-2,CS-2, cols[c]);
+            DrawRectangle(ox+(P[0][i]-mnx)*CS, oy+(P[1][i]-mny)*CS, CS-2,CS-2, cols[c]);
         }
     }
 
     void dessiner_opponent(){
-        DrawRectangleRounded({340,410,180,75},0.25f,6,{50,15,15,255});
-        DrawText("ADVERSAIRE",352,420,15,{200,80,80,255});
+        DrawRectangleRounded({340,344,432,72},0.25f,6,{50,15,15,255});
+        DrawRectangleRoundedLines({340,344,432,72},0.25f,6,{200,60,60,80});
+        DrawText("ADVERSAIRE",352,352,15,{220,90,90,255});
         char sc[32],lv[32];
-        sprintf(sc,"Score  %d",opp_score);
-        sprintf(lv,"Lvl    %d",opp_niveau);
-        DrawText(sc,352,442,14,ORANGE);
-        DrawText(lv,352,460,14,ORANGE);
+        sprintf(sc,"Score : %d",opp_score);
+        sprintf(lv,"Level : %d",opp_niveau);
+        DrawText(sc,352,374,15,ORANGE);
+        DrawText(lv,560,374,15,ORANGE);
     }
 
     void input(){

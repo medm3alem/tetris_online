@@ -64,7 +64,7 @@ int main(int argc, char** argv){
     Color RBTN  = {170, 25,  25, 255};
     Color DBTN_C= {45,  55, 120, 255};
 
-    InitWindow(780,720,"TETRIS ONLINE");
+    InitWindow(780,800,"TETRIS ONLINE");
     InitAudioDevice();
     SetTargetFPS(60);
 
@@ -78,9 +78,9 @@ int main(int argc, char** argv){
 
     // Volume
     float vol=0.5f;
-    const float VX=340,VY=672,VW=200;
-    Rectangle vbar ={VX+30,VY+16,VW,5};
-    Rectangle vknob={VX+30+VW*vol-6,VY+11,12,15};
+    const float VX=340,VY=752,VW=380;
+    Rectangle vbar ={VX+30,VY+18,VW,5};
+    Rectangle vknob={VX+30+VW*vol-6,VY+13,12,15};
     bool drag=false;
 
     // Chat buttons : 2 lignes × 3, dans zone x=530,y=345
@@ -88,7 +88,7 @@ int main(int argc, char** argv){
     const char* ctxt[]={"Good luck!","Well Played!","Wow!","Thanks!","Good Game!","Oops!"};
     Rectangle cbtn[6];
     for(int i=0;i<6;i++)
-        cbtn[i]={530.0f+(i%3)*76,345.0f+(i/3)*36,70,30};
+        cbtn[i]={340.0f+(i%3)*145,442.0f+(i/3)*36,138,30};
 
     while(!WindowShouldClose()){
         UpdateMusicStream(jeu.music);
@@ -271,19 +271,19 @@ int main(int argc, char** argv){
         // -- Chat (online) ----------------------
         if(online_mode&&(state==State::PLAYING||state==State::WAITING)){
             // Boutons chat
-            panel({525,338,247,80},PNL2,"CHAT RAPIDE",14);
+            panel({340,424,432,108},PNL2,"CHAT RAPIDE",14);
             for(int i=0;i<6;i++){
                 DrawRectangleRounded(cbtn[i],0.3f,6,DBTN_C);
                 int tw=MeasureText(clbl[i],12);
                 DrawText(clbl[i],(int)(cbtn[i].x+(cbtn[i].width-tw)/2),
-                         (int)(cbtn[i].y+8),12,WHITE);
+                         (int)(cbtn[i].y+8),14,WHITE);
                 if(hit(cbtn[i],mouse)&&is_connected()){
                     network_send(std::string("CHAT|")+ctxt[i]+"\n");
                     jeu.ajouter_msg(ctxt[i],false);jeu.max_chat++;
                 }
             }
             // Zone messages
-            panel({340,425,430,220},PNL2,"MESSAGES",14);
+            panel({340,534,432,210},PNL2,"MESSAGES",14);
             jeu.draw_msg();
         }
 
