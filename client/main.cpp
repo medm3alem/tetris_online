@@ -10,11 +10,11 @@
 //  Machine à états
 // ─────────────────────────────────────────────
 enum class State {
-    MENU,        // Accueil, choix solo/online
-    CONNECTING,  // Tentative de connexion TCP
-    WAITING,     // Connecté, attend l'adversaire
-    PLAYING,     // Partie en cours
-    GAMEOVER     // Partie terminée (solo ou online)
+    MENU,
+    CONNECTING,
+    WAITING,
+    PLAYING,
+    GAMEOVER
 };
 
 // ─────────────────────────────────────────────
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
 
     State state      = State::MENU;
     bool online_mode = false;
-    bool paused      = false;  // pause solo (remplace jeu.start)
+    bool paused      = false;
 
     // Volume slider
     float volume = 0.5f;
@@ -101,8 +101,9 @@ int main(int argc, char** argv) {
                 std::string msg = network_pop_message();
 
                 if (msg == "MATCH_START") {
-                    state  = State::PLAYING;
-                    paused = false;
+                    state       = State::PLAYING;
+                    paused      = false;
+                    last_update = GetTime(); // ← évite move_down immédiat
                     jeu.set_msg("C'est parti !");
                 }
                 else if (msg == "OPPONENT_LEFT") {
@@ -111,7 +112,6 @@ int main(int argc, char** argv) {
                     state = State::GAMEOVER;
                 }
                 else {
-                    // apply_network_message retourne true si victoire
                     bool victoire = jeu.apply_network_message(msg);
                     if (victoire) {
                         disconnect();
@@ -123,11 +123,10 @@ int main(int argc, char** argv) {
 
         // ─── Logique de jeu ───────────────────────────
         if (state == State::PLAYING && !paused) {
-            jeu.input();
+            if (!jeu.justLost) jeu.input();
             if (event(0.2 / (jeu.get_niveau() + 1)))
                 jeu.move_down();
 
-            // Défaite locale
             if (jeu.justLost) {
                 if (online_mode && is_connected()) {
                     network_send("GAMEOVER\n");
@@ -136,10 +135,15 @@ int main(int argc, char** argv) {
                 state = State::GAMEOVER;
             }
 
-            // Envoyer les lignes à l'adversaire
             if (jeu.linesToSend > 0 && online_mode && is_connected()) {
                 network_send("LINES|" + std::to_string(jeu.linesToSend) + "\n");
                 jeu.linesToSend = 0;
+            }
+
+            if (jeu.scoreChanged && online_mode && is_connected()) {
+                network_send("SCORE|" + std::to_string(jeu.get_score())
+                             + "|" + std::to_string(jeu.get_niveau()) + "\n");
+                jeu.scoreChanged = false;
             }
         }
 
@@ -147,30 +151,33 @@ int main(int argc, char** argv) {
         BeginDrawing();
         ClearBackground(darkblue);
 
-        jeu.dessiner();
-        jeu.dessiner_next();
-        jeu.destroy();
+        // Labels et cadres (AVANT les pièces)
+        DrawText("Score", 345,  18, 30, WHITE);
+        DrawText("Next",  355, 215, 30, WHITE);
+        DrawText("Level", 355, 128, 30, WHITE);
 
-        // Labels
-        DrawText("Score", 345,  15, 38, WHITE);
-        DrawText("level", 365, 125, 38, WHITE);
-        DrawText("Next",  365, 210, 38, WHITE);
-
-        // Cadres UI
         DrawRectangleRounded({320,  55, 170,  60}, 0.3f, 6, panel);
         DrawRectangleRounded({320, 160, 170,  40}, 0.3f, 6, panel);
         DrawRectangleRounded({320, 260, 170, 140}, 0.3f, 6, panel);
         DrawRectangleRounded({530, 180, 230, 300}, 0.3f, 6, panel);
 
-        // Score + niveau
         char sc[16], lvl[16];
         sprintf(sc,  "%d", jeu.get_score());
         sprintf(lvl, "%d", jeu.get_niveau());
-        DrawText(sc,  345,  70, 27, BLACK);
-        DrawText(lvl, 345, 168, 27, BLACK);
+        DrawText(sc,  350,  73, 24, BLACK);
+        DrawText(lvl, 390, 163, 20, BLACK);
+
+        // Grille toujours visible
+        if (state == State::PLAYING || state == State::GAMEOVER) {
+            jeu.dessiner();        // grille + pièce courante + ghost
+            jeu.dessiner_next();   // pièce suivante
+            jeu.destroy();         // détruire les lignes complètes
+        } else {
+            jeu.grid.dessiner();   // grille vide uniquement
+        }
 
         // Message d'état
-        DrawText(jeu.get_msg().c_str(), 320, 420, 22, WHITE);
+        DrawText(jeu.get_msg().c_str(), 320, 420, 20, WHITE);
 
         // ─── Boutons selon l'état ─────────────────────
         switch (state) {
@@ -183,6 +190,7 @@ int main(int argc, char** argv) {
                     online_mode = false;
                     paused      = false;
                     jeu.reset();
+                    last_update = GetTime(); // ← évite move_down immédiat
                     state = State::PLAYING;
                 }
                 if (button_clicked(btn_online, mouse)) {
@@ -213,8 +221,9 @@ int main(int argc, char** argv) {
             }
 
             case State::PLAYING: {
-                // Pause uniquement en solo
-                if (!online_mode) {
+                if (online_mode) {
+                    jeu.dessiner_opponent();
+                } else {
                     Rectangle btn_pause = {320, 490, 150, 40};
                     draw_button(btn_pause,
                                 paused ? "REPRENDRE" : "PAUSE",
@@ -234,7 +243,8 @@ int main(int argc, char** argv) {
 
                 if (button_clicked(btn_retry, mouse)) {
                     jeu.reset();
-                    paused = false;
+                    paused      = false;
+                    last_update = GetTime(); // ← évite move_down immédiat
                     if (online_mode) {
                         network_connect(ip_serveur);
                         state = State::CONNECTING;
