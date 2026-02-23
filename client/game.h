@@ -2,262 +2,348 @@
 #define TETRISONLINE_GAME_H
 
 #include <random>
-#include "objets.h"
-#include <vector>
 #include <string>
-#include <set>
+#include <vector>
+#include <algorithm>
+#include "objets.h"
 #include "network.h"
 
-// ─── Layout global (partagé avec main.cpp) ────
-//   Fenêtre     : 780 × 640
-//   Grille      : ox=20, oy=60, 10×20 cellules × 30px = 300×600
-//   Panneau     : x=340, y=60, w=430
-//   Next cadre  : x=340, y=120, w=180, h=140
+// ═══════════════════════════════════════════════════════════════
+//  LAYOUT — coordonnées pixel partagées avec main.cpp
+//  Fenêtre      : 780 × 800
+//  Grille       : ox=20, oy=60  → 300×600px (10×20 cellules × 30px)
+//  Panneau droit: x=340, y=60, w=432
+//    Score      : x=340, y= 60, w=200, h=50
+//    Level      : x=550, y= 60, w=222, h=50
+//    Next       : x=340, y=120, w=180, h=140
+//    Controles  : x=530, y=124
+//    Message    : y=272
+//    Bouton     : y=295, h=42    → fin=337
+//    Adversaire : y=347, h=70    → fin=417  (online)
+//    Chat btns  : y=427, h=100   → fin=527  (online)
+//    Messages   : y=535, h=210   → fin=745  (online)
+//    Volume     : y=755
+// ═══════════════════════════════════════════════════════════════
 
-static const int GX = 20;   // grille offset X
-static const int GY = 60;   // grille offset Y
-static const int CS = 30;   // cell size
+static const int   GX        = 20;
+static const int   GY        = 60;
+static const int   NX        = 340;
+static const int   NY        = 120;
+static const int   NW        = 180;
+static const int   NH        = 140;
+static const int   CHAT_BUF  = 20;
+static const int   CHAT_SHOW =  8;
+static const float FLASH_DUR = 0.35f;
 
-static const int NX = 340, NY = 120, NW = 180, NH = 140;  // cadre Next
-
+// ═══════════════════════════════════════════════════════════════
 class Game {
-private:
-    int score, niveau;
-    std::string msg;
 
+    // ───────────────────────────────────────────────────────────
+    //  PRIVÉ — jamais accédé directement depuis main.cpp
+    // ───────────────────────────────────────────────────────────
+
+    int         score_;
+    int         level_;
+    std::string msg_;
+
+    bool  flashing_;     // animation de flash en cours
+    float flashTimer_;   // temps restant avant destruction
+
+    bool scoreChanged_;  // score à broadcaster (online)
+    int  linesToSend_;   // lignes de pénalité à envoyer (online)
+
+    std::vector<Piece> bag_; // 7-bag randomizer
+
+    int  chat_total_;
+    std::vector<std::string> chat_buf_;
+    std::vector<bool>        chat_received_;
+
+    // ─── 7-bag : mélange de toutes les pièces ─────────────────
+    static std::vector<Piece> make_bag() {
+        Piece T,O,I,J,L,S,Z;
+        T.make_T(); O.make_O(); I.make_I();
+        J.make_J(); L.make_L(); S.make_S(); Z.make_Z();
+        std::vector<Piece> b={T,O,I,J,L,S,Z};
+        static std::mt19937 rng(std::random_device{}());
+        for(int i=6;i>0;i--){
+            std::uniform_int_distribution<int> d(0,i);
+            std::swap(b[i],b[d(rng)]);
+        }
+        return b;
+    }
+
+    Piece pull() {
+        if(bag_.empty()) bag_=make_bag();
+        Piece p=bag_.back(); bag_.pop_back(); return p;
+    }
+
+    // ─── Score (table Tetris standard) ────────────────────────
+    void add_score(int lines) {
+        static const int BASE[5]={0,40,100,300,1200};
+        score_ += BASE[std::min(lines,4)] * (level_+1);
+        level_  = score_/1000;
+        scoreChanged_=true;
+    }
+
+    // ─── Poser la pièce : fusion + tirage suivant ─────────────
+    void place() {
+        grid.merge(current);
+        current.clear();
+        current = next;
+        next    = pull();
+        if(!current.no_overlap(grid)){
+            msg_="GAME OVER"; justLost=true; current.clear();
+        }
+    }
+
+    // ─── Ligne de pénalité avec un trou aléatoire ─────────────
+    void add_garbage() {
+        static std::mt19937 rng(std::random_device{}());
+        std::uniform_int_distribution<int> d(0,grid.W-1);
+        int hole=d(rng), target=grid.H-1;
+        for(int j=grid.H-1;j>=0;j--){
+            bool empty=true;
+            for(int i=0;i<grid.W;i++) if(grid.cells[i][j]){empty=false;break;}
+            if(empty){target=j;break;}
+        }
+        for(int i=0;i<grid.W;i++) if(i!=hole) grid.cells[i][target]=1;
+    }
+
+    // ─── Buffer circulaire chat ────────────────────────────────
+    void push_chat(const std::string& text, bool received){
+        chat_buf_[chat_total_%CHAT_BUF]      = text;
+        chat_received_[chat_total_%CHAT_BUF] = received;
+        chat_total_++;
+    }
+
+    // ───────────────────────────────────────────────────────────
+    //  PUBLIC
+    // ───────────────────────────────────────────────────────────
 public:
-    object grid;
-    std::vector<object> objs;
-    object current, next;
-    bool justLost, scoreChanged;
-    int  linesToSend;
+    Piece grid;
+    Piece current;
+    Piece next;
+
+    bool justLost;   // spawn en collision → partie perdue
+    int  opp_score;
+    int  opp_level;
+
+    // Audio public pour SetMusicVolume / SetSoundVolume dans main
     Music music;
-    Sound rotate_sound, destroy_sound;
-    int opp_score, opp_niveau;
-    int max_chat;
-    std::vector<std::string> chat_messages;
-    std::vector<bool>        chat_recu;
+    Sound snd_rotate;
+    Sound snd_line;
 
-    std::string get_msg()  const { return msg; }
-    int get_score()        const { return score; }
-    int get_niveau()       const { return niveau; }
-    void set_msg(std::string m)  { msg=m; }
-    void set_score(int s)        { score=s; scoreChanged=true; }
-    void set_niveau(int n)       { niveau=n; }
+    // ── Getters ───────────────────────────────────────────────
+    int         score()    const { return score_;    }
+    int         level()    const { return level_;    }
+    std::string msg()      const { return msg_;      }
+    bool        flashing() const { return flashing_; }
+    void        set_msg(const std::string& m) { msg_=m; }
 
-    Game(){
-        grid=object(); objs=get_all_objects();
-        current=get_random_object(); next=get_random_object();
-        score=0;niveau=0;msg="";
-        justLost=false;scoreChanged=false;linesToSend=0;
-        opp_score=0;opp_niveau=0;max_chat=0;
-        chat_messages=std::vector<std::string>(20,"");
-        chat_recu=std::vector<bool>(20,false);
-        music=LoadMusicStream("sounds/cover.wav");
-        rotate_sound=LoadSound("sounds/rotate.wav");
-        destroy_sound=LoadSound("sounds/destroy.wav");
+    // ─── Constructeur ─────────────────────────────────────────
+    Game() : score_(0), level_(0), msg_(""),
+             flashing_(false), flashTimer_(0),
+             scoreChanged_(false), linesToSend_(0),
+             justLost(false), opp_score(0), opp_level(0),
+             chat_total_(0)
+    {
+        bag_    = make_bag();
+        current = pull();
+        next    = pull();
+        chat_buf_      = std::vector<std::string>(CHAT_BUF,"");
+        chat_received_ = std::vector<bool>(CHAT_BUF,false);
+        music      = LoadMusicStream("sounds/cover.wav");
+        snd_rotate = LoadSound("sounds/rotate.wav");
+        snd_line   = LoadSound("sounds/destroy.wav");
         PlayMusicStream(music);
     }
-    ~Game(){UnloadMusicStream(music);UnloadSound(destroy_sound);UnloadSound(rotate_sound);}
 
-    std::vector<object> get_all_objects(){
-        object T,O,I,J,L,S,Z;
-        T.make_T();O.make_O();I.make_I();J.make_J();L.make_L();S.make_S();Z.make_Z();
-        return {T,O,I,J,L,S,Z};
-    }
-    object get_random_object(){
-        if(objs.empty())objs=get_all_objects();
-        static std::mt19937 gen(std::random_device{}());
-        std::uniform_int_distribution<> d(0,(int)objs.size()-1);
-        int i=d(gen); object o=objs[i]; objs.erase(objs.begin()+i); return o;
+    ~Game(){
+        UnloadMusicStream(music);
+        UnloadSound(snd_rotate);
+        UnloadSound(snd_line);
     }
 
-    void reset(){
-        grid=object();objs=get_all_objects();
-        current=get_random_object();next=get_random_object();
-        score=0;niveau=0;msg="";
-        justLost=false;scoreChanged=false;linesToSend=0;
-        opp_score=0;opp_niveau=0;max_chat=0;
-        for(int i=0;i<20;i++){chat_messages[i].clear();chat_recu[i]=false;}
+    // ─── Reset ────────────────────────────────────────────────
+    void reset() {
+        grid=Piece(); bag_=make_bag(); current=pull(); next=pull();
+        score_=0; level_=0; msg_="";
+        flashing_=false; flashTimer_=0;
+        scoreChanged_=false; linesToSend_=0;
+        justLost=false; opp_score=0; opp_level=0;
+        chat_total_=0;
+        for(int i=0;i<CHAT_BUF;i++){ chat_buf_[i].clear(); chat_received_[i]=false; }
     }
 
-    bool apply_network_message(const std::string& m){
-        if(m.rfind("LINES|",0)==0){int n=std::stoi(m.substr(6));for(int i=0;i<n;i++)add_garbage_line();set_msg("ATTAQUE !");return false;}
-        if(m=="GAMEOVER"){set_msg("VICTOIRE !");return true;}
-        if(m.rfind("CHAT|",0)==0){ajouter_msg(m.substr(5),true);max_chat++;return false;}
+    // ═══════════════════════════════════════════════════════════
+    //  LOGIQUE — une méthode par responsabilité
+    // ═══════════════════════════════════════════════════════════
+
+    // Avance le timer de flash et finalise quand écoulé.
+    void tick_flash(float dt) {
+        if(!flashing_) return;
+        flashTimer_-=dt;
+        if(flashTimer_>0) return;
+        int nb=grid.destroy_full_lines();
+        if(nb>0){
+            StopSound(snd_line); PlaySound(snd_line);
+            add_score(nb);
+            linesToSend_+=nb;
+        }
+        flashing_=false; flashTimer_=0;
+    }
+
+    // Déclenche le flash si des lignes sont complètes.
+    void tick_lines() {
+        if(justLost||flashing_) return;
+        if(!grid.full_lines().empty()){
+            flashing_=true; flashTimer_=FLASH_DUR;
+        }
+    }
+
+    // Descente automatique par gravité.
+    void tick_gravity() {
+        if(justLost||flashing_) return;
+        if(current.hits_bottom(grid)) place();
+        else                          current.move_down();
+    }
+
+    // Input clavier.
+    void input() {
+        if(justLost||flashing_) return;
+        switch(GetKeyPressed()){
+            case KEY_RIGHT: if(current.can_go_right(grid)) current.move_right(); break;
+            case KEY_LEFT:  if(current.can_go_left(grid))  current.move_left();  break;
+            case KEY_UP:
+                if(current.can_rotate(grid)){
+                    StopSound(snd_rotate); PlaySound(snd_rotate);
+                    current.rotate();
+                }
+                break;
+            case KEY_DOWN:
+                if(current.hits_bottom(grid)) place();
+                else current.move_down();
+                break;
+            case KEY_ENTER: hard_drop(); break;
+            default: break;
+        }
+    }
+
+    void hard_drop() {
+        if(justLost||flashing_||!current.no_overlap(grid)) return;
+        int n=0;
+        while(!current.hits_bottom(grid)){ current.move_down(); n++; }
+        score_+=n*2; scoreChanged_=true;
+        place();
+    }
+
+    // ── Helpers broadcast online ──────────────────────────────
+    // Retourne les lignes à envoyer et remet le compteur à 0.
+    int pop_lines() { int n=linesToSend_; linesToSend_=0; return n; }
+
+    // Retourne true si le score a changé, remet le flag à false.
+    bool pop_score_changed() {
+        if(!scoreChanged_) return false;
+        scoreChanged_=false; return true;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  RÉSEAU
+    // ═══════════════════════════════════════════════════════════
+
+    // Traite un message réseau. Retourne true = adversaire perdu.
+    bool apply_net(const std::string& m){
+        if(m.rfind("LINES|",0)==0){
+            int n=std::stoi(m.substr(6));
+            for(int i=0;i<n;i++) add_garbage();
+            msg_="ATTAQUE !"; return false;
+        }
+        if(m=="GAMEOVER")            { msg_="VICTOIRE !"; return true; }
+        if(m.rfind("CHAT|",0)==0)    { push_chat(m.substr(5),true); return false; }
         if(m.rfind("SCORE|",0)==0){
-            std::string d=m.substr(6);size_t s=d.find('|');
-            if(s!=std::string::npos){opp_score=std::stoi(d.substr(0,s));opp_niveau=std::stoi(d.substr(s+1));}
+            auto d=m.substr(6); auto sep=d.find('|');
+            if(sep!=std::string::npos){
+                opp_score=std::stoi(d.substr(0,sep));
+                opp_level=std::stoi(d.substr(sep+1));
+            }
             return false;
         }
         return false;
     }
 
-    void add_garbage_line(){
-        static std::mt19937 gen(std::random_device{}());
-        std::uniform_int_distribution<> d(0,grid.line-1);
-        int hole=d(gen),tc=grid.column-1;
-        for(int j=grid.column-1;j>=0;j--){
-            bool e=true;for(int i=0;i<grid.line;i++)if(grid.matrice[i][j]!=0){e=false;break;}
-            if(e){tc=j;break;}
-        }
-        for(int i=0;i<grid.line;i++)if(i!=hole)grid.matrice[i][tc]=1;
-    }
+    // Envoyer un message chat depuis le joueur local.
+    void send_chat(const std::string& text){ push_chat(text,false); }
 
-    void ajouter_msg(const std::string& message,bool recu){
-        // Buffer circulaire de 20 messages
-        int idx = max_chat % 20;
-        chat_messages[idx] = message;
-        chat_recu[idx]     = recu;
-        max_chat++;
-    }
+    // ═══════════════════════════════════════════════════════════
+    //  RENDU
+    // ═══════════════════════════════════════════════════════════
 
-    // Messages : zone x=348..540, y=408..590
-    void draw_msg(){
-        const int MSG_Y0   = 556;  // y début zone texte
-        const int LINE_H   = 22;   // hauteur par ligne
-        const int MAX_SHOW = 8;    // nb max de lignes visibles dans le box
+    // Grille : fond + blocs posés + ghost + pièce + flash
+    void draw_grid() const {
+        float alpha = flashing_ ? (flashTimer_/FLASH_DUR) : 0;
+        grid.draw_background(GX,GY);
+        grid.draw_blocks(GX,GY);
+        if(justLost) return;
+        if(!current.no_overlap(grid)) return;
 
-        // Récupérer les MAX_SHOW derniers messages depuis le buffer circulaire
-        int total = (max_chat < 20) ? max_chat : 20;
-        int show  = (total < MAX_SHOW) ? total : MAX_SHOW;
-
-        // Indices des messages à afficher (les plus récents)
-        for(int row=0; row<show; row++){
-            // index dans le buffer circulaire : du plus ancien au plus récent
-            int buf_idx = ((max_chat - show + row) % 20 + 20) % 20;
-            Color col = chat_recu[buf_idx] ? ORANGE : SKYBLUE;
-            int y = MSG_Y0 + row * LINE_H;
-            if(chat_recu[buf_idx]){
-                DrawText(">", 348, y, 13, {150,80,30,255});
-                DrawText(chat_messages[buf_idx].c_str(), 364, y, 13, col);
-            } else {
-                const char* txt = chat_messages[buf_idx].c_str();
-                int tw = MeasureText(txt, 13);
-                int x  = 762 - tw - 16;
-                if(x < 364) x = 364;
-                DrawText(txt, x, y, 13, col);
-                DrawText("<", 762 - MeasureText("<",13), y, 13, {30,100,150,255});
-            }
-        }
-    }
-
-    // ─── Rendu grille avec offset GX,GY ──────
-    void dessiner(){
-        // Fond + lignes de grille
-        DrawRectangle(GX,GY,grid.line*CS,grid.column*CS,{10,10,30,255});
-        Color gl={30,35,70,255};
-        for(int i=0;i<=grid.line;i++)
-            DrawLine(GX+i*CS,GY,GX+i*CS,GY+grid.column*CS,gl);
-        for(int j=0;j<=grid.column;j++)
-            DrawLine(GX,GY+j*CS,GX+grid.line*CS,GY+j*CS,gl);
-
-        // Blocs posés
-        grid.dessiner(GX,GY);
-
-        if(justLost)return;
-        if(!current.checkintersection(grid))return;
-
-        // Ghost
-        object ghost=current;
-        while(!ghost.check_collision(grid))ghost.translate_bas();
-        auto Pg=ghost.get_pos();auto Pc=current.get_pos();
+        Piece ghost=current;
+        while(!ghost.hits_bottom(grid)) ghost.move_down();
+        auto Pg=ghost.pos(), Pc=current.pos();
         bool same=true;
-        for(int i=0;i<4;i++)if(Pg[0][i]!=Pc[0][i]||Pg[1][i]!=Pc[1][i]){same=false;break;}
-        if(!same)
-            ghost.dessiner_piece(GX,GY,{160,160,160,160},true);
+        for(int i=0;i<4;i++) if(Pg[0][i]!=Pc[0][i]||Pg[1][i]!=Pc[1][i]){same=false;break;}
+        if(!same) ghost.draw_ghost(GX,GY);
 
-        // Pièce courante
-        current.dessiner_piece(GX,GY,WHITE,false);
+        current.draw_piece(GX,GY);
+        if(flashing_&&alpha>0) grid.draw_flash(GX,GY,alpha);
     }
 
-    // ─── Next centré dans son cadre ───────────
-    void dessiner_next(){
-        auto P=next.get_pos();
-        auto cols=next.GetCellColors();
-        int mnx=*std::min_element(P[0].begin(),P[0].end());
-        int mny=*std::min_element(P[1].begin(),P[1].end());
-        int mxx=*std::max_element(P[0].begin(),P[0].end());
-        int mxy=*std::max_element(P[1].begin(),P[1].end());
-        // Rotation 90° : on utilise P[0] pour X et P[1] pour Y
-        // (comme la grille mais sans inversion — affichage naturel)
-        int pw=(mxx-mnx+1)*CS, ph=(mxy-mny+1)*CS;
-        int ox=NX+NW/2-pw/2;
-        int oy=NY+NH/2-ph/2+12; // +12 pour descendre sous le label NEXT
-        for(int i=0;i<4;i++){
-            int c=next.matrice[P[0][i]][P[1][i]];
-            DrawRectangle(ox+(P[0][i]-mnx)*CS, oy+(P[1][i]-mny)*CS, CS-2,CS-2, cols[c]);
-        }
+    // Pièce suivante centrée dans le cadre Next
+    void draw_next() const {
+        auto P=next.pos();
+        int mnr=*std::min_element(P[0].begin(),P[0].end());
+        int mnc=*std::min_element(P[1].begin(),P[1].end());
+        int mxr=*std::max_element(P[0].begin(),P[0].end());
+        int mxc=*std::max_element(P[1].begin(),P[1].end());
+        int ox=NX+NW/2-(mxr-mnr+1)*next.CS/2;
+        int oy=NY+NH/2-(mxc-mnc+1)*next.CS/2+12;
+        for(int i=0;i<4;i++)
+            DrawRectangle(ox+(P[0][i]-mnr)*next.CS,
+                          oy+(P[1][i]-mnc)*next.CS,
+                          next.CS-2,next.CS-2,
+                          PALETTE[next.cells[P[0][i]][P[1][i]]]);
     }
 
-    void dessiner_opponent(){
-        DrawRectangleRounded({340,344,432,72},0.25f,6,{50,15,15,255});
-        DrawRectangleRoundedLines({340,344,432,72},0.25f,6,{200,60,60,80});
-        DrawText("ADVERSAIRE",352,352,15,{220,90,90,255});
+    // Panneau adversaire — y=347..417
+    void draw_opponent() const {
+        DrawRectangleRounded({340,347,432,70},0.2f,6,(Color){45,12,12,255});
+        DrawRectangleRoundedLines({340,347,432,70},0.2f,6,(Color){200,60,60,70});
+        DrawText("ADVERSAIRE",352,355,15,(Color){210,80,80,255});
         char sc[32],lv[32];
         sprintf(sc,"Score : %d",opp_score);
-        sprintf(lv,"Level : %d",opp_niveau);
-        DrawText(sc,352,374,15,ORANGE);
-        DrawText(lv,560,374,15,ORANGE);
+        sprintf(lv,"Lvl   : %d",opp_level);
+        DrawText(sc,352,377,15,ORANGE);
+        DrawText(lv,560,377,15,ORANGE);
     }
 
-    void input(){
-        int key=GetKeyPressed();
-        switch(key){
-            case KEY_RIGHT:if(current.check_right(grid))current.translate_d();break;
-            case KEY_LEFT: if(current.check_left(grid)) current.translate_g();break;
-            case KEY_DOWN:
-                if(current.check_collision(grid)&&!justLost&&current.checkintersection(grid)){
-                    grid.add(current);current.set_zero();
-                    current=next;next=get_random_object();
-                    if(!current.checkintersection(grid)){set_msg("GAME OVER");justLost=true;current.set_zero();}
-                } else current.translate_bas();
-                break;
-            case KEY_UP:if(current.check_rotate(grid))rotate();break;
-            case KEY_ENTER:hard_drop();break;
-            default:break;
+    // Messages chat — les CHAT_SHOW plus récents
+    void draw_chat() const {
+        const int Y0=553, LH=22;
+        int total=std::min(chat_total_,CHAT_BUF);
+        int show =std::min(total,CHAT_SHOW);
+        for(int row=0;row<show;row++){
+            int idx=((chat_total_-show+row)%CHAT_BUF+CHAT_BUF)%CHAT_BUF;
+            const char* txt=chat_buf_[idx].c_str();
+            int y=Y0+row*LH;
+            if(chat_received_[idx]){
+                DrawText(">",348,y,13,(Color){150,80,30,255});
+                DrawText(txt,364,y,13,ORANGE);
+            } else {
+                int x=std::max(364,758-MeasureText(txt,13));
+                DrawText(txt,x,y,13,SKYBLUE);
+                DrawText("<",762,y,13,(Color){30,100,150,255});
+            }
         }
-    }
-    void rotate(){PlaySound(rotate_sound);current.rotate();}
-
-    void hard_drop(){
-        if(justLost||!current.checkintersection(grid))return;
-        int d=0;while(!current.check_collision(grid)){current.translate_bas();d++;}
-        set_score(score+d*2);
-        grid.add(current);current.set_zero();
-        current=next;next=get_random_object();
-        if(!current.checkintersection(grid)){set_msg("GAME OVER");justLost=true;current.set_zero();}
-    }
-
-    void move_down(){
-        if(justLost)return;
-        if(current.check_collision(grid)){
-            if(current.checkintersection(grid)){
-                grid.add(current);current.set_zero();
-                current=next;next=get_random_object();
-                if(!current.checkintersection(grid)){set_msg("GAME OVER");justLost=true;current.set_zero();}
-            }
-        } else current.translate_bas();
-    }
-
-    bool loose(){
-        if(justLost)return true;
-        for(int i=0;i<grid.line;i++)
-            if(grid.matrice[i][0]!=0){
-                if(!justLost){set_msg("GAME OVER");justLost=true;current.set_zero();}
-                return true;
-            }
-        return false;
-    }
-
-    int calcscore(int nb,int niv){
-        int b=0;if(nb==1)b=40;else if(nb==2)b=100;else if(nb==3)b=300;else if(nb==4)b=1200;
-        return b*(niv+1);
-    }
-    void destroy(){
-        int nb=grid.destroy();
-        if(nb!=0){PlaySound(destroy_sound);set_score(score+calcscore(nb,niveau));set_niveau(score/1000);linesToSend+=nb;}
     }
 };
 
-#endif
+#endif // TETRISONLINE_GAME_H

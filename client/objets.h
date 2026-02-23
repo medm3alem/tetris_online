@@ -1,182 +1,247 @@
 #ifndef TETRISONLINE_OBJETS_H
 #define TETRISONLINE_OBJETS_H
 
-#include <iostream>
-#include <numeric>
 #include <vector>
 #include <algorithm>
 #include "raylib.h"
-#include <unordered_set>
 
-std::vector<std::vector<int>> multiply(const std::vector<std::vector<int>>& A,
-                                       const std::vector<std::vector<int>>& B) {
-    int n=A.size(), p=A[0].size(), m=B[0].size();
-    std::vector<std::vector<int>> C(n,std::vector<int>(m,0));
-    for(int i=0;i<n;i++) for(int j=0;j<m;j++) for(int k=0;k<p;k++) C[i][j]+=A[i][k]*B[k][j];
+// ─── Rotation matricielle 90° sens horaire ────────────────────────
+// Multiplie A (2×4) par B (4×k)
+static std::vector<std::vector<int>> mat_mul(
+    const std::vector<std::vector<int>>& A,
+    const std::vector<std::vector<int>>& B)
+{
+    int n=(int)A.size(), p=(int)A[0].size(), m=(int)B[0].size();
+    std::vector<std::vector<int>> C(n, std::vector<int>(m,0));
+    for(int i=0;i<n;i++) for(int j=0;j<m;j++) for(int k=0;k<p;k++)
+        C[i][j]+=A[i][k]*B[k][j];
     return C;
 }
 
-class object {
+// ─── Palette couleurs (index = valeur dans matrice) ───────────────
+static const std::vector<Color> PALETTE = {
+    {15,  15,  40, 255},  // 0 vide
+    {47, 230,  23, 255},  // 1 vert   (garbage)
+    {232,  18,  18, 255}, // 2 rouge  O
+    {226, 116,  17, 255}, // 3 orange T
+    {237, 234,   4, 255}, // 4 jaune  L
+    {166,   0, 247, 255}, // 5 violet J
+    { 21, 204, 209, 255}, // 6 cyan   Z
+    { 13,  64, 216, 255}, // 7 bleu   S
+};
+
+// ═════════════════════════════════════════════════════════════════
+// Représente soit une pièce (4 cellules non-nulles) soit la grille.
+// Axes : matrice[ligne][colonne] → ligne=X horizontal, colonne=Y vertical.
+// ═════════════════════════════════════════════════════════════════
+class Piece {
 public:
-    int line, column, cellsize;
-    std::vector<std::vector<int>> matrice;
+    int W, H, CS;  // largeur (nb lignes), hauteur (nb colonnes), cell size px
+    std::vector<std::vector<int>> cells;
 
-    object(int l,int c): line(l),column(c),cellsize(30),matrice(l,std::vector<int>(c,0)){}
-    object(): line(10),column(20),cellsize(30),matrice(10,std::vector<int>(20,0)){}
-    object& operator=(const object& o){
-        line=o.line;column=o.column;cellsize=o.cellsize;matrice=o.matrice;return *this;
+    Piece() : W(10), H(20), CS(30), cells(10, std::vector<int>(20,0)) {}
+    Piece(int w, int h) : W(w), H(h), CS(30), cells(w, std::vector<int>(h,0)) {}
+
+    Piece& operator=(const Piece& o) {
+        W=o.W; H=o.H; CS=o.CS; cells=o.cells; return *this;
     }
 
-    void set_zero(){for(int i=0;i<line;i++)for(int j=0;j<column;j++)matrice[i][j]=0;}
+    void clear() { for(auto& r:cells) std::fill(r.begin(),r.end(),0); }
 
-    std::vector<std::vector<int>> get_pos(){
-        std::vector<int> l(4,0),c(4,0);int k=0;
-        for(int i=0;i<line;i++)for(int j=0;j<column;j++)
-            if(matrice[i][j]!=0){l[k]=i;c[k]=j;k++;}
-        return {l,c};
-    }
-
-    std::vector<Color> GetCellColors(){
-        return {
-            {15, 15, 40,255},  // 0 vide
-            {47,230, 23,255},  // 1 vert   garbage
-            {232,18, 18,255},  // 2 rouge  O
-            {226,116,17,255},  // 3 orange T
-            {237,234, 4,255},  // 4 jaune  L
-            {166,  0,247,255}, // 5 violet J
-            { 21,204,209,255}, // 6 cyan   Z
-            { 13, 64,216,255}, // 7 bleu   S
-        };
+    // Positions des 4 cellules non-nulles → {{rows},{cols}}
+    std::vector<std::vector<int>> pos() const {
+        std::vector<int> rs(4,0), cs(4,0); int k=0;
+        for(int i=0;i<W;i++) for(int j=0;j<H;j++)
+            if(cells[i][j]!=0){ rs[k]=i; cs[k]=j; k++; }
+        return {rs,cs};
     }
 
-    void add(object other){
-        if(other.line==line&&other.column==column)
-            for(int i=0;i<line;i++)for(int j=0;j<column;j++)matrice[i][j]+=other.matrice[i][j];
+    // ─── Formes ───────────────────────────────────────────────────
+    void make_I(){ clear(); int m=W/2-2; for(int i=m;i<m+4;i++) cells[i][0]=1; }
+    void make_O(){ clear(); cells[W/2-1][0]=2; cells[W/2][0]=2;
+                            cells[W/2-1][1]=2; cells[W/2][1]=2; }
+    void make_T(){ clear(); int m=W/2-1;
+                   for(int i=m;i<m+3;i++) cells[i][0]=3; cells[m+1][1]=3; }
+    void make_L(){ clear(); int m=W/2-1;
+                   for(int i=m;i<m+3;i++) cells[i][0]=4; cells[m][1]=4; }
+    void make_J(){ clear(); int m=W/2-1;
+                   for(int i=m;i<m+3;i++) cells[i][0]=5; cells[m+2][1]=5; }
+    void make_Z(){ clear(); int m=W/2-1;
+                   cells[m][0]=6; cells[m+1][0]=6;
+                   cells[m+1][1]=6; cells[m+2][1]=6; }
+    void make_S(){ clear(); int m=W/2-1;
+                   cells[m+1][0]=7; cells[m+2][0]=7;
+                   cells[m][1]=7;   cells[m+1][1]=7; }
+
+    // ─── Translations ─────────────────────────────────────────────
+    void move_right() {
+        for(int j=0;j<H;j++) if(cells[W-1][j]) return;
+        Piece t(W,H); t.CS=CS;
+        for(int j=0;j<H;j++){ t.cells[0][j]=0; for(int i=1;i<W;i++) t.cells[i][j]=cells[i-1][j]; }
+        cells=t.cells;
+    }
+    void move_left() {
+        for(int j=0;j<H;j++) if(cells[0][j]) return;
+        Piece t(W,H); t.CS=CS;
+        for(int j=0;j<H;j++){ t.cells[W-1][j]=0; for(int i=0;i<W-1;i++) t.cells[i][j]=cells[i+1][j]; }
+        cells=t.cells;
+    }
+    void move_down() {
+        for(int i=0;i<W;i++) if(cells[i][H-1]) return;
+        Piece t(W,H); t.CS=CS;
+        for(int i=0;i<W;i++){ t.cells[i][0]=0; for(int j=1;j<H;j++) t.cells[i][j]=cells[i][j-1]; }
+        cells=t.cells;
     }
 
-    void make_I(){set_zero();int m=line/2-2;for(int i=m;i<m+4;i++)matrice[i][0]=1;}
-    void make_O(){set_zero();for(int i=0;i<2;i++){matrice[line/2][i]=2;matrice[line/2-1][i]=2;}}
-    void make_T(){set_zero();int m=line/2-1;for(int i=m;i<m+3;i++)matrice[i][0]=3;matrice[m+1][1]=3;}
-    void make_L(){set_zero();int m=line/2-1;for(int i=m;i<m+3;i++)matrice[i][0]=4;matrice[m][1]=4;}
-    void make_J(){set_zero();int m=line/2-1;for(int i=m;i<m+3;i++)matrice[i][0]=5;matrice[m+2][1]=5;}
-    void make_Z(){set_zero();int m=line/2-1;for(int i=m;i<m+2;i++)matrice[i][0]=6;for(int i=m+1;i<m+3;i++)matrice[i][1]=6;}
-    void make_S(){set_zero();int m=line/2-1;for(int i=m;i<m+2;i++)matrice[i][1]=7;for(int i=m+1;i<m+3;i++)matrice[i][0]=7;}
+    // ─── Rotation 90° sens horaire ────────────────────────────────
+    void rotate() {
+        auto P = pos();
+        int color = cells[P[0][0]][P[1][0]];
+        int r0=*std::min_element(P[0].begin(),P[0].end());
+        int c0=*std::min_element(P[1].begin(),P[1].end());
 
-    void translate_d(){
-        int s=0;for(int i=0;i<column;i++)s+=matrice[line-1][i];
-        if(s==0){std::vector<std::vector<int>> m(line,std::vector<int>(column,0));
-            for(int i=0;i<column;i++){m[0][i]=0;for(int j=1;j<line;j++)m[j][i]=matrice[j-1][i];}matrice=m;}
-    }
-    void translate_g(){
-        int s=0;for(int i=0;i<column;i++)s+=matrice[0][i];
-        if(s==0){std::vector<std::vector<int>> m(line,std::vector<int>(column,0));
-            for(int i=0;i<column;i++){m[line-1][i]=0;for(int j=0;j<line-1;j++)m[j][i]=matrice[j+1][i];}matrice=m;}
-    }
-    void translate_bas(){
-        int s=0;for(int i=0;i<line;i++)s+=matrice[i][column-1];
-        if(s==0){std::vector<std::vector<int>> m(line,std::vector<int>(column,0));
-            for(int i=0;i<line;i++){m[i][0]=0;for(int j=1;j<column;j++)m[i][j]=matrice[i][j-1];}matrice=m;}
-    }
-    void translate_haut(){
-        int s=0;for(int i=0;i<line;i++)s+=matrice[i][0];
-        if(s==0){std::vector<std::vector<int>> m(line,std::vector<int>(column,0));
-            for(int i=0;i<line;i++){m[i][column-1]=0;for(int j=0;j<column-1;j++)m[i][j]=matrice[i][j+1];}matrice=m;}
-    }
-
-    void rotate(){
         std::vector<std::vector<int>> R={{0,-1},{1,0}};
-        auto P=get_pos();
-        int ic=matrice[P[0][0]][P[1][0]];
-        int minxp=*min_element(P[0].begin(),P[0].end());
-        int minyp=*min_element(P[1].begin(),P[1].end());
-        auto P1=multiply(R,P);
-        int minx=*min_element(P1[0].begin(),P1[0].end());
-        int miny=*min_element(P1[1].begin(),P1[1].end());
-        for(int i=0;i<4;i++){P1[0][i]+=-minx+minxp;P1[1][i]+=-miny+minyp;}
-        int mx=*max_element(P1[0].begin(),P1[0].end());
-        if(mx>=line)for(int i=0;i<4;i++)P1[0][i]-=(mx-line+1);
-        int my=*max_element(P1[1].begin(),P1[1].end());
-        if(my>=column)for(int j=0;j<4;j++)P1[1][j]-=(my-column+1);
-        set_zero();
-        for(int i=0;i<4;i++)matrice[P1[0][i]][P1[1][i]]=ic;
+        auto P2 = mat_mul(R,P);
+
+        int nr=*std::min_element(P2[0].begin(),P2[0].end());
+        int nc=*std::min_element(P2[1].begin(),P2[1].end());
+        for(int i=0;i<4;i++){ P2[0][i]+=r0-nr; P2[1][i]+=c0-nc; }
+
+        int mr=*std::max_element(P2[0].begin(),P2[0].end());
+        if(mr>=W) for(int i=0;i<4;i++) P2[0][i]-=(mr-W+1);
+        int mc=*std::max_element(P2[1].begin(),P2[1].end());
+        if(mc>=H) for(int i=0;i<4;i++) P2[1][i]-=(mc-H+1);
+
+        clear();
+        for(int i=0;i<4;i++) cells[P2[0][i]][P2[1][i]]=color;
     }
 
-    bool check_collision(object& o){
-        auto P=get_pos();
-        if(*max_element(P[1].begin(),P[1].end())==column-1)return true;
-        for(int i=0;i<4;i++)if(o.matrice[P[0][i]][P[1][i]+1]!=0)return true;
+    // ─── Collisions ───────────────────────────────────────────────
+
+    // Touche le bas ou un bloc posé en dessous
+    bool hits_bottom(const Piece& grid) const {
+        auto P=pos();
+        for(int i=0;i<4;i++){
+            if(P[1][i]==H-1) return true;
+            if(grid.cells[P[0][i]][P[1][i]+1]!=0) return true;
+        }
         return false;
     }
-    bool check_left(object& o){
-        auto P=get_pos();
-        for(int i=0;i<4;i++){if(P[0][i]==0)return false;if(o.matrice[P[0][i]-1][P[1][i]]!=0)return false;}
-        return true;
-    }
-    bool check_right(object& o){
-        auto P=get_pos();
-        for(int i=0;i<4;i++){if(P[0][i]==line-1)return false;if(o.matrice[P[0][i]+1][P[1][i]]!=0)return false;}
-        return true;
-    }
-    bool check_rotate(object& o){
-        object t=object();t.matrice=matrice;t.rotate();
-        auto P=t.get_pos();
-        for(int i=0;i<4;i++)if(o.matrice[P[0][i]][P[1][i]]!=0)return false;
-        return true;
-    }
-    bool checkintersection(object& o){
-        auto P=get_pos();
-        for(int i=0;i<4;i++)if(o.matrice[P[0][i]][P[1][i]]!=0)return false;
-        return true;
-    }
-
-    // ─── Rendu avec offset ox, oy ─────────────
-    // Toutes les fonctions de dessin prennent un offset pixel
-    void dessiner(int ox=0, int oy=0){
-        auto colors=GetCellColors();
-        for(int i=0;i<line;i++)
-            for(int j=0;j<column;j++)
-                DrawRectangle(ox+i*cellsize+1, oy+j*cellsize+1,
-                              cellsize-2, cellsize-2, colors[matrice[i][j]]);
-    }
-
-    void dessiner_piece(int ox, int oy, Color ghost_color, bool is_ghost){
-        auto P=get_pos();
-        auto colors=GetCellColors();
+    bool can_go_left(const Piece& grid) const {
+        auto P=pos();
         for(int i=0;i<4;i++){
-            int x=ox+P[0][i]*cellsize+1;
-            int y=oy+P[1][i]*cellsize+1;
-            if(is_ghost)
-                DrawRectangleLines(x,y,cellsize-2,cellsize-2,ghost_color);
-            else
-                DrawRectangle(x,y,cellsize-2,cellsize-2,colors[matrice[P[0][i]][P[1][i]]]);
+            if(P[0][i]==0) return false;
+            if(grid.cells[P[0][i]-1][P[1][i]]!=0) return false;
+        }
+        return true;
+    }
+    bool can_go_right(const Piece& grid) const {
+        auto P=pos();
+        for(int i=0;i<4;i++){
+            if(P[0][i]==W-1) return false;
+            if(grid.cells[P[0][i]+1][P[1][i]]!=0) return false;
+        }
+        return true;
+    }
+    bool can_rotate(const Piece& grid) const {
+        Piece tmp=*this; tmp.rotate();
+        auto P=tmp.pos();
+        for(int i=0;i<4;i++) if(grid.cells[P[0][i]][P[1][i]]!=0) return false;
+        return true;
+    }
+    // Vrai si aucune cellule de this ne chevauche grid
+    bool no_overlap(const Piece& grid) const {
+        auto P=pos();
+        for(int i=0;i<4;i++) if(grid.cells[P[0][i]][P[1][i]]!=0) return false;
+        return true;
+    }
+
+    // ─── Fusion ───────────────────────────────────────────────────
+    void merge(const Piece& other) {
+        for(int i=0;i<W;i++) for(int j=0;j<H;j++)
+            cells[i][j]+=other.cells[i][j];
+    }
+
+    // ─── Gestion des lignes ───────────────────────────────────────
+
+    // Retourne les indices de colonnes (j) complètes
+    std::vector<int> full_lines() const {
+        std::vector<int> full;
+        for(int j=0;j<H;j++){
+            bool ok=true;
+            for(int i=0;i<W;i++) if(!cells[i][j]){ok=false;break;}
+            if(ok) full.push_back(j);
+        }
+        return full;
+    }
+
+    // Détruit toutes les lignes complètes en une seule passe.
+    // Algorithme : on recopie les colonnes non-complètes depuis le bas,
+    // puis on remplit le reste avec des zéros (gravité correcte pour N lignes).
+    int destroy_full_lines() {
+        auto fl = full_lines();
+        if(fl.empty()) return 0;
+
+        // Marquer les colonnes (j) à supprimer dans un set rapide
+        std::vector<bool> to_delete(H, false);
+        for(int j : fl) to_delete[j] = true;
+
+        // Reconstruire colonne par colonne (j=H-1 = bas)
+        // On parcourt de droite (bas) à gauche (haut) et on compacte
+        std::vector<std::vector<int>> new_cells(W, std::vector<int>(H, 0));
+        int write = H - 1; // curseur d'écriture (bas de la grille)
+        for(int j = H-1; j >= 0; j--) {
+            if(to_delete[j]) continue; // sauter les lignes complètes
+            for(int i = 0; i < W; i++)
+                new_cells[i][write] = cells[i][j];
+            write--;
+        }
+        // Le reste (write >= 0) reste à 0 — lignes vides en haut
+
+        cells = new_cells;
+        return (int)fl.size();
+    }
+
+    // ─── Rendu ────────────────────────────────────────────────────
+
+    // Fond + lignes de grille (pour la grille vide)
+    void draw_background(int ox, int oy) const {
+        DrawRectangle(ox, oy, W*CS, H*CS,(Color){10,10,30,255});
+        Color gl={28,32,65,255};
+        for(int i=0;i<=W;i++) DrawLine(ox+i*CS,oy, ox+i*CS,oy+H*CS, gl);
+        for(int j=0;j<=H;j++) DrawLine(ox,oy+j*CS, ox+W*CS,oy+j*CS, gl);
+    }
+
+    // Tous les blocs non-nuls (pour la grille posée)
+    void draw_blocks(int ox, int oy) const {
+        for(int i=0;i<W;i++) for(int j=0;j<H;j++)
+            if(cells[i][j])
+                DrawRectangle(ox+i*CS+1, oy+j*CS+1, CS-2,CS-2, PALETTE[cells[i][j]]);
+    }
+
+    // Seulement les 4 cellules de la pièce courante
+    void draw_piece(int ox, int oy) const {
+        auto P=pos();
+        for(int i=0;i<4;i++){
+            int c=cells[P[0][i]][P[1][i]];
+            DrawRectangle(ox+P[0][i]*CS+1, oy+P[1][i]*CS+1, CS-2,CS-2, PALETTE[c]);
         }
     }
 
-    // ─── Lignes ───────────────────────────────
-    std::vector<int> find_not_null(){
-        std::vector<int> r;
-        for(int j=column-1;j>=0;j--){
-            bool f=true;
-            for(int i=0;i<line;i++)if(matrice[i][j]==0){f=false;break;}
-            if(f)r.push_back(j);
-        }
-        return r;
+    // Contour gris translucide (ghost)
+    void draw_ghost(int ox, int oy) const {
+        auto P=pos();
+        for(int i=0;i<4;i++)
+            DrawRectangleLines(ox+P[0][i]*CS+1, oy+P[1][i]*CS+1,
+                               CS-2, CS-2,(Color){160,160,160,140});
     }
 
-    void destroyline(int idx){
-        for(int i=0;i<line;i++)matrice[i][idx]=0;
-        object t=*this;
-        for(int i=0;i<line;i++)for(int j=idx;j<column;j++)t.matrice[i][j]=0;
-        column=idx;t.translate_bas();
-        set_zero();column=t.column;add(t);
-    }
-
-    int destroy(){
-        auto nn=find_not_null();int n=nn.size();
-        if(n==0)return 0;
-        for(int i=n-1;i>=0;i--)destroyline(nn[i]);
-        return n;
+    // Flash blanc sur les lignes complètes (alpha 0..1, décroissant)
+    void draw_flash(int ox, int oy, float alpha) const {
+        Color fc={255,255,255,(unsigned char)(alpha*255)};
+        for(int j:full_lines())
+            DrawRectangle(ox, oy+j*CS, W*CS, CS, fc);
     }
 };
 
-#endif
+#endif // TETRISONLINE_OBJETS_H
