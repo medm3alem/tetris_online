@@ -160,9 +160,10 @@ public:
 
     void draw_msg() {
         for(int i=0;i<max_chat;i++){
-            float dec = chat_recu[i]?0.0f:120.0f;
-            Color col = chat_recu[i]?RED:BLACK;
-            DrawText(chat_messages[i].c_str(), 550+(int)dec, (int)(195+28*i), 15, col);
+            // Messages reçus : alignés à gauche, envoyés : décalés à droite
+            float x = chat_recu[i] ? 512.0f : 620.0f;
+            Color col = chat_recu[i] ? ORANGE : WHITE;
+            DrawText(chat_messages[i].c_str(), (int)x, (int)(228+24*i), 13, col);
         }
     }
 
@@ -232,14 +233,14 @@ public:
 
     // ─── Panneau adversaire ───────────────────
     void dessiner_opponent() {
-        Color panel = {80, 40, 40, 255};
-        DrawRectangleRounded({320, 480, 170, 90}, 0.3f, 6, panel);
-        DrawText("Adversaire", 330, 487, 18, WHITE);
+        Color panel_opp = {80, 40, 40, 255};
+        DrawRectangleRounded({310, 385, 170, 90}, 0.3f, 6, panel_opp);
+        DrawText("Adversaire", 320, 392, 18, WHITE);
         char sc[32], lvl[32];
         sprintf(sc,  "Score: %d", opp_score);
         sprintf(lvl, "Level: %d", opp_niveau);
-        DrawText(sc,  330, 513, 16, ORANGE);
-        DrawText(lvl, 330, 535, 16, ORANGE);
+        DrawText(sc,  320, 415, 16, ORANGE);
+        DrawText(lvl, 320, 437, 16, ORANGE);
     }
 
     // ─── Input ────────────────────────────────
