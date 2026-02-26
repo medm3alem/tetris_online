@@ -12,7 +12,9 @@
 #include <iostream>
 #include <cstring>
 #include <errno.h>
+#ifndef _WIN32
 #include <fcntl.h>
+#endif
 
 bool network_alive = false;
 
@@ -38,14 +40,22 @@ void network_connect(const char* server_ip){
         //const char* server_ip = "10.31.30.16";
         if (inet_pton(AF_INET, server_ip, &server.sin_addr) <= 0) {
             std::cerr << "ERROR: Invalid address: " << server_ip << std::endl;
+            #ifdef _WIN32
+            closesocket(sock);
+#else
             close(sock);
+#endif
             sock = -1;
             return;
         }
         if (connect(sock, (sockaddr*)&server, sizeof(server)) < 0) {
             std::cerr << "ERROR: Connection failed: " << strerror(errno) << std::endl;
             std::cerr << "Make sure the server is running on " << server_ip << ":4242" << std::endl;
+            #ifdef _WIN32
+            closesocket(sock);
+#else
             close(sock);
+#endif
             sock = -1;
             return;
         }
@@ -60,8 +70,16 @@ void network_connect(const char* server_ip){
 void disconnect() {
     network_send("QUIT\n");
     if (sock >= 0) {
+        #ifdef _WIN32
+        shutdown(sock, SD_BOTH);
+#else
         shutdown(sock, SHUT_RDWR);
-        close(sock);
+#endif
+        #ifdef _WIN32
+            closesocket(sock);
+#else
+            close(sock);
+#endif
         sock = -1;
     }
     network_alive = false;
@@ -121,7 +139,11 @@ void network_start_listener() {
         }
 
         if (sock >= 0) {
+            #ifdef _WIN32
+            closesocket(sock);
+#else
             close(sock);
+#endif
             sock = -1;
         }
         std::cout << "Listener thread stopped" << std::endl;

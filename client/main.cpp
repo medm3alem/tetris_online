@@ -37,7 +37,7 @@ static Color C_DARK  = {45,  55, 120, 255};
 // ═══════════════════════════════════════════════════════════════
 static void ui_panel(Rectangle r, Color bg, const char* label=nullptr, int lfs=14){
     DrawRectangleRounded(r,0.2f,6,bg);
-    RLDrawRoundedLines(r,0.2f,6,(Color){255,255,255,20});
+    RLDrawRoundedLines(r,0.2f,6,((Color){255,255,255,20}));
     if(label&&label[0]){
         int tw=MeasureText(label,lfs);
         DrawText(label,(int)(r.x+(r.width-tw)/2),(int)(r.y+6),lfs,(Color){140,160,220,255});
@@ -46,7 +46,7 @@ static void ui_panel(Rectangle r, Color bg, const char* label=nullptr, int lfs=1
 
 static void ui_button(Rectangle r, const char* txt, Color col, int fs=19){
     DrawRectangleRounded(r,0.3f,6,col);
-    RLDrawRoundedLines(r,0.3f,6,(Color){255,255,255,30});
+    RLDrawRoundedLines(r,0.3f,6,((Color){255,255,255,30}));
     int tw=MeasureText(txt,fs);
     DrawText(txt,(int)(r.x+(r.width-tw)/2),(int)(r.y+(r.height-fs)/2),fs,WHITE);
 }
