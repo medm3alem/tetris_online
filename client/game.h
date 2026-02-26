@@ -316,7 +316,7 @@ public:
     // Panneau adversaire — y=347..417
     void draw_opponent() const {
         DrawRectangleRounded({340,347,432,70},0.2f,6,(Color){45,12,12,255});
-        DrawRectangleRoundedLines({340,347,432,70},0.2f,6,1.0f,(Color){200,60,60,70});
+        RLDrawRoundedLines({340,347,432,70},0.2f,6,(Color){200,60,60,70});
         DrawText("ADVERSAIRE",352,355,15,(Color){210,80,80,255});
         char sc[32],lv[32];
         snprintf(sc, sizeof(sc), "Score : %d", opp_score);

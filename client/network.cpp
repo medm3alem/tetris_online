@@ -2,8 +2,13 @@
 #include <thread>
 #include <queue>
 #include <mutex>
-#include <unistd.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
+#include <unistd.h>
+#endif
 #include <iostream>
 #include <cstring>
 #include <errno.h>
