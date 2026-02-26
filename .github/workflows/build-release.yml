@@ -1,0 +1,187 @@
+name: Build & Release
+
+# Déclenché sur chaque tag vX.Y.Z (ex: git tag v1.0.0 && git push --tags)
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:  # permet de lancer manuellement depuis GitHub
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  #  LINUX
+  # ─────────────────────────────────────────────────────────────
+  build-linux:
+    name: Linux (Ubuntu)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances système
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            cmake build-essential \
+            libgl1-mesa-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxi-dev \
+            libasound2-dev libpulse-dev
+
+      - name: Installer Raylib 5
+        run: |
+          wget -q https://github.com/raysan5/raylib/releases/download/5.0/raylib-5.0_linux_amd64.tar.gz
+          tar -xf raylib-5.0_linux_amd64.tar.gz
+          sudo cp -r raylib-5.0_linux_amd64/include/* /usr/local/include/
+          sudo cp -r raylib-5.0_linux_amd64/lib/*     /usr/local/lib/
+          sudo ldconfig
+
+      - name: Compiler
+        working-directory: client
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON
+          cmake --build build --config Release -j$(nproc)
+
+      - name: Créer le package
+        working-directory: client
+        run: |
+          mkdir -p package/TetrisOnline-linux
+          cp build/tetris          package/TetrisOnline-linux/
+          cp -r sounds             package/TetrisOnline-linux/
+          cd package
+          tar -czf TetrisOnline-linux-x64.tar.gz TetrisOnline-linux/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TetrisOnline-linux-x64
+          path: client/package/TetrisOnline-linux-x64.tar.gz
+
+  # ─────────────────────────────────────────────────────────────
+  #  WINDOWS  (cross-compilation mingw-w64 depuis Ubuntu)
+  # ─────────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows (mingw cross)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer mingw-w64 + cmake
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake mingw-w64
+
+      - name: Télécharger Raylib 5 précompilé Windows
+        run: |
+          wget -q https://github.com/raysan5/raylib/releases/download/5.0/raylib-5.0_win64_mingw-w64.zip
+          unzip -q raylib-5.0_win64_mingw-w64.zip
+          mkdir -p deps/raylib-win
+          cp -r raylib-5.0_win64_mingw-w64/include deps/raylib-win/
+          cp -r raylib-5.0_win64_mingw-w64/lib     deps/raylib-win/
+
+      - name: Compiler (cross mingw)
+        working-directory: client
+        run: |
+          cmake -B build-win \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-mingw.cmake \
+            -DTOOLCHAIN_WINDOWS=ON \
+            -DRAYLIB_WIN_DIR=../deps/raylib-win
+          cmake --build build-win --config Release -j$(nproc)
+
+      - name: Créer le package
+        working-directory: client
+        run: |
+          mkdir -p package/TetrisOnline-windows
+          cp build-win/tetris.exe package/TetrisOnline-windows/
+          cp -r sounds            package/TetrisOnline-windows/
+          cd package
+          zip -r TetrisOnline-windows-x64.zip TetrisOnline-windows/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TetrisOnline-windows-x64
+          path: client/package/TetrisOnline-windows-x64.zip
+
+  # ─────────────────────────────────────────────────────────────
+  #  MACOS
+  # ─────────────────────────────────────────────────────────────
+  build-macos:
+    name: macOS (universal)
+    runs-on: macos-14   # Apple Silicon (M1) — compile aussi pour x86 via lipo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer Raylib via Homebrew
+        run: brew install raylib
+
+      - name: Compiler
+        working-directory: client
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release -j$(nproc)
+
+      - name: Créer le package
+        working-directory: client
+        run: |
+          mkdir -p package/TetrisOnline-macos
+          cp build/tetris    package/TetrisOnline-macos/
+          cp -r sounds       package/TetrisOnline-macos/
+          cd package
+          zip -r TetrisOnline-macos-arm64.zip TetrisOnline-macos/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TetrisOnline-macos-arm64
+          path: client/package/TetrisOnline-macos-arm64.zip
+
+  # ─────────────────────────────────────────────────────────────
+  #  RELEASE GITHUB — crée la release avec les 3 binaires
+  # ─────────────────────────────────────────────────────────────
+  release:
+    name: Publier la release GitHub
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write   # nécessaire pour créer la release
+
+    steps:
+      - name: Télécharger tous les artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Créer la GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Tetris Online ${{ github.ref_name }}"
+          body: |
+            ## Tetris Online ${{ github.ref_name }}
+
+            ### Téléchargements
+            | Plateforme | Fichier |
+            |------------|---------|
+            | 🐧 Linux   | `TetrisOnline-linux-x64.tar.gz` |
+            | 🪟 Windows | `TetrisOnline-windows-x64.zip`  |
+            | 🍎 macOS   | `TetrisOnline-macos-arm64.zip`  |
+
+            ### Installation
+            **Linux** : extraire + `chmod +x tetris` + `./tetris`
+            **Windows** : extraire + double-cliquer `tetris.exe`
+            **macOS** : extraire + `./tetris` (ou clic droit → Ouvrir)
+
+            ### Mode online
+            Lancer le serveur : `./server`
+            Se connecter : `./tetris <ip_serveur>`
+          files: |
+            artifacts/TetrisOnline-linux-x64/TetrisOnline-linux-x64.tar.gz
+            artifacts/TetrisOnline-windows-x64/TetrisOnline-windows-x64.zip
+            artifacts/TetrisOnline-macos-arm64/TetrisOnline-macos-arm64.zip
+          draft: false
+          prerelease: false
