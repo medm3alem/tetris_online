@@ -1,19 +1,21 @@
 #include "network.h"
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#else
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
+#pragma comment(lib, "ws2_32.lib")
 #endif
 #include <thread>
 #include <queue>
 #include <mutex>
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
+#endif
 #include <iostream>
 #include <cstring>
 #include <errno.h>
-
 bool network_alive = false;
 
 int sock = -1;
