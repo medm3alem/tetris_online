@@ -1,20 +1,18 @@
 #include "network.h"
-#include <thread>
-#include <queue>
-#include <mutex>
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <fcntl.h>
 #endif
+#include <thread>
+#include <queue>
+#include <mutex>
 #include <iostream>
 #include <cstring>
 #include <errno.h>
-#ifndef _WIN32
-#include <fcntl.h>
-#endif
 
 bool network_alive = false;
 
