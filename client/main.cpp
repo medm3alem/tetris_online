@@ -36,7 +36,7 @@ static Color C_DARK  = {45,  55, 120, 255};
 // ═══════════════════════════════════════════════════════════════
 static void ui_panel(Rectangle r, Color bg, const char* label=nullptr, int lfs=14){
     DrawRectangleRounded(r,0.2f,6,bg);
-    DrawRectangleRoundedLines(r,0.2f,6,(Color){255,255,255,20});
+    DrawRectangleRoundedLines(r,0.2f,6, 1.0f,(Color){255,255,255,20});
     if(label&&label[0]){
         int tw=MeasureText(label,lfs);
         DrawText(label,(int)(r.x+(r.width-tw)/2),(int)(r.y+6),lfs,(Color){140,160,220,255});
@@ -45,7 +45,7 @@ static void ui_panel(Rectangle r, Color bg, const char* label=nullptr, int lfs=1
 
 static void ui_button(Rectangle r, const char* txt, Color col, int fs=19){
     DrawRectangleRounded(r,0.3f,6,col);
-    DrawRectangleRoundedLines(r,0.3f,6,(Color){255,255,255,30});
+    DrawRectangleRoundedLines(r,0.3f,6, 1.0f,(Color){255,255,255,30});
     int tw=MeasureText(txt,fs);
     DrawText(txt,(int)(r.x+(r.width-tw)/2),(int)(r.y+(r.height-fs)/2),fs,WHITE);
 }
@@ -60,7 +60,9 @@ static void ui_text(const char* t, int x, int w, int y, int fs, Color c){
 
 // ═══════════════════════════════════════════════════════════════
 int main(int argc, char** argv){
+    #ifndef _WIN32
     signal(SIGPIPE,SIG_IGN);
+#endif
     const char* SERVER=(argc>=2)?argv[1]:"127.0.0.1";
 
     InitWindow(780,800,"TETRIS ONLINE");
@@ -188,12 +190,12 @@ int main(int argc, char** argv){
 
         // Score
         ui_panel({340,60,200,50},C_PANEL,"SCORE");
-        { char s[16]; sprintf(s,"%d",jeu.score());
+        { char s[16]; snprintf(s, sizeof(s), "%d", jeu.score());
           ui_text(s,340,200,84,26,WHITE); }
 
         // Level
         ui_panel({550,60,222,50},C_PANEL,"LEVEL");
-        { char l[16]; sprintf(l,"%d",jeu.level());
+        { char l[16]; snprintf(l, sizeof(l), "%d", jeu.level());
           ui_text(l,550,222,84,26,WHITE); }
 
         // Next

@@ -40,7 +40,7 @@ jobs:
         working-directory: client
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON
-          cmake --build build --config Release -j$(nproc)
+          cmake --build build --config Release -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
 
       - name: Créer le package
         working-directory: client
@@ -123,8 +123,8 @@ jobs:
       - name: Compiler
         working-directory: client
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release -j$(nproc)
+          cmake -B build -DCMAKE_BUILD_TYPE=Release             -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
+          cmake --build build --config Release -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
 
       - name: Créer le package
         working-directory: client

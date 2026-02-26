@@ -7,7 +7,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ═══════════════════════════════════════════════════════════════
 #  Sources
 # ═══════════════════════════════════════════════════════════════
-add_executable(tetris main.cpp)
+# Chercher network.cpp (dans client/ ou à la racine)
+if(EXISTS "${CMAKE_SOURCE_DIR}/network.cpp")
+    set(NET_SRC "${CMAKE_SOURCE_DIR}/network.cpp")
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/../network.cpp")
+    set(NET_SRC "${CMAKE_SOURCE_DIR}/../network.cpp")
+else()
+    message(FATAL_ERROR "network.cpp introuvable. Placez-le dans client/")
+endif()
+add_executable(tetris main.cpp ${NET_SRC})
 target_include_directories(tetris PRIVATE ${CMAKE_SOURCE_DIR})
 
 # ═══════════════════════════════════════════════════════════════
