@@ -61,54 +61,44 @@ jobs:
   #  WINDOWS  (cross-compilation mingw-w64 depuis Ubuntu)
   # ─────────────────────────────────────────────────────────────
   build-windows:
-    name: Windows (mingw cross)
-    runs-on: ubuntu-22.04
-
+    name: Windows (natif MSVC)
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Installer mingw-w64 + cmake
+      - name: Installer Raylib
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y cmake mingw-w64
+          $url = "https://github.com/raysan5/raylib/releases/download/5.0/raylib-5.0_win64_msvc16.zip"
+          Invoke-WebRequest $url -OutFile raylib.zip
+          Expand-Archive raylib.zip -DestinationPath .
+          New-Item -ItemType Directory -Force -Path deps/raylib-win
+          Copy-Item -Recurse raylib-5.0_win64_msvc16/include deps/raylib-win/
+          Copy-Item -Recurse raylib-5.0_win64_msvc16/lib     deps/raylib-win/
+        shell: pwsh
 
-      - name: Télécharger Raylib 5 précompilé Windows
-        run: |
-          wget -q https://github.com/raysan5/raylib/releases/download/5.0/raylib-5.0_win64_mingw-w64.zip
-          unzip -q raylib-5.0_win64_mingw-w64.zip
-          mkdir -p deps/raylib-win
-          cp -r raylib-5.0_win64_mingw-w64/include deps/raylib-win/
-          cp -r raylib-5.0_win64_mingw-w64/lib     deps/raylib-win/
-
-      - name: Compiler (cross mingw)
+      - name: Compiler
         working-directory: client
         run: |
-          cmake -B build-win \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-mingw.cmake \
-            -DTOOLCHAIN_WINDOWS=ON \
-            -DRAYLIB_WIN_DIR=../deps/raylib-win
-          cmake --build build-win --config Release -j$(nproc)
+          cmake -B build-win -DCMAKE_BUILD_TYPE=Release -DTOOLCHAIN_WINDOWS=ON -DRAYLIB_WIN_DIR=../deps/raylib-win
+          cmake --build build-win --config Release
+        shell: cmd
 
       - name: Créer le package
         working-directory: client
         run: |
-          mkdir -p package/TetrisOnline-windows
-          cp build-win/tetris.exe package/TetrisOnline-windows/
-          cp -r sounds            package/TetrisOnline-windows/
-          cd package
-          zip -r TetrisOnline-windows-x64.zip TetrisOnline-windows/
+          New-Item -ItemType Directory -Force -Path package/TetrisOnline-windows
+          Copy-Item build-win/Release/tetris.exe package/TetrisOnline-windows/
+          Copy-Item -Recurse sounds package/TetrisOnline-windows/
+          Compress-Archive package/TetrisOnline-windows TetrisOnline-windows-x64.zip
+        shell: pwsh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: TetrisOnline-windows-x64
-          path: client/package/TetrisOnline-windows-x64.zip
+          path: client/TetrisOnline-windows-x64.zip
 
-  # ─────────────────────────────────────────────────────────────
-  #  MACOS
-  # ─────────────────────────────────────────────────────────────
   build-macos:
     name: macOS (universal)
     runs-on: macos-14   # Apple Silicon (M1) — compile aussi pour x86 via lipo
