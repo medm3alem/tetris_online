@@ -33,6 +33,8 @@ if(WIN32 OR MINGW OR TOOLCHAIN_WINDOWS)
     target_compile_definitions(tetris PRIVATE _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN)
     target_link_libraries(tetris raylib winmm gdi32 opengl32 ws2_32)
     target_link_options(tetris PRIVATE -mwindows)
+    target_compile_options(tetris PRIVATE -pthread)
+    target_link_libraries(tetris PRIVATE pthread)
     set(CPACK_GENERATOR "ZIP")
 
 elseif(APPLE)
