@@ -120,8 +120,13 @@ jobs:
         working-directory: client
         run: |
           mkdir -p package/TetrisOnline-macos
-          cp build/tetris    package/TetrisOnline-macos/
-          cp -r sounds       package/TetrisOnline-macos/
+          # Le binaire est soit dans build/tetris soit dans build/tetris.app/Contents/MacOS/tetris
+          if [ -f build/tetris ]; then
+            cp build/tetris package/TetrisOnline-macos/
+          else
+            cp build/tetris.app/Contents/MacOS/tetris package/TetrisOnline-macos/
+          fi
+          cp -r sounds package/TetrisOnline-macos/
           cd package
           zip -r TetrisOnline-macos-arm64.zip TetrisOnline-macos/
 
