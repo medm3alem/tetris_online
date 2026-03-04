@@ -315,9 +315,9 @@ public:
 
     // Panneau adversaire — y=347..417
     void draw_opponent() const {
-        DrawRectangleRounded({340,347,432,70},0.2f,6,(Color){45,12,12,255});
-        RLDrawRoundedLines(((Rectangle){340,347,432,70}),0.2f,6,((Color){200,60,60,70}));
-        DrawText("ADVERSAIRE",352,355,15,(Color){210,80,80,255});
+        DrawRectangleRounded({340,347,432,70},0.2f,6,Color{45,12,12,255});
+        RLDrawRoundedLines(Rectangle{340,347,432,70},0.2f,6,Color{200,60,60,70});
+        DrawText("ADVERSAIRE",352,355,15,Color{210,80,80,255});
         char sc[32],lv[32];
         snprintf(sc, sizeof(sc), "Score : %d", opp_score);
         snprintf(lv, sizeof(lv), "Lvl   : %d", opp_level);
@@ -335,12 +335,12 @@ public:
             const char* txt=chat_buf_[idx].c_str();
             int y=Y0+row*LH;
             if(chat_received_[idx]){
-                DrawText(">",348,y,13,(Color){150,80,30,255});
+                DrawText(">",348,y,13,Color{150,80,30,255});
                 DrawText(txt,364,y,13,ORANGE);
             } else {
                 int x=std::max(364,758-MeasureText(txt,13));
                 DrawText(txt,x,y,13,SKYBLUE);
-                DrawText("<",762,y,13,(Color){30,100,150,255});
+                DrawText("<",762,y,13,Color{30,100,150,255});
             }
         }
     }

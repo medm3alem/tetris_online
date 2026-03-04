@@ -206,7 +206,7 @@ public:
 
     // Fond + lignes de grille (pour la grille vide)
     void draw_background(int ox, int oy) const {
-        DrawRectangle(ox, oy, W*CS, H*CS,(Color){10,10,30,255});
+        DrawRectangle(ox, oy, W*CS, H*CS,Color{10,10,30,255});
         Color gl={28,32,65,255};
         for(int i=0;i<=W;i++) DrawLine(ox+i*CS,oy, ox+i*CS,oy+H*CS, gl);
         for(int j=0;j<=H;j++) DrawLine(ox,oy+j*CS, ox+W*CS,oy+j*CS, gl);
@@ -233,7 +233,7 @@ public:
         auto P=pos();
         for(int i=0;i<4;i++)
             DrawRectangleLines(ox+P[0][i]*CS+1, oy+P[1][i]*CS+1,
-                               CS-2, CS-2,(Color){160,160,160,140});
+                               CS-2, CS-2,Color{160,160,160,140});
     }
 
     // Flash blanc sur les lignes complètes (alpha 0..1, décroissant)

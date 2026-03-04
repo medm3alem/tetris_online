@@ -37,16 +37,16 @@ static Color C_DARK  = {45,  55, 120, 255};
 // ═══════════════════════════════════════════════════════════════
 static void ui_panel(Rectangle r, Color bg, const char* label=nullptr, int lfs=14){
     DrawRectangleRounded(r,0.2f,6,bg);
-    RLDrawRoundedLines(r,0.2f,6,((Color){255,255,255,20}));
+    RLDrawRoundedLines(r,0.2f,6,Color{255,255,255,20});
     if(label&&label[0]){
         int tw=MeasureText(label,lfs);
-        DrawText(label,(int)(r.x+(r.width-tw)/2),(int)(r.y+6),lfs,(Color){140,160,220,255});
+        DrawText(label,(int)(r.x+(r.width-tw)/2),(int)(r.y+6),lfs,Color{140,160,220,255});
     }
 }
 
 static void ui_button(Rectangle r, const char* txt, Color col, int fs=19){
     DrawRectangleRounded(r,0.3f,6,col);
-    RLDrawRoundedLines(r,0.3f,6,((Color){255,255,255,30}));
+    RLDrawRoundedLines(r,0.3f,6,Color{255,255,255,30});
     int tw=MeasureText(txt,fs);
     DrawText(txt,(int)(r.x+(r.width-tw)/2),(int)(r.y+(r.height-fs)/2),fs,WHITE);
 }
@@ -158,7 +158,7 @@ int main(int argc, char** argv){
         ClearBackground(C_BG);
 
         // ── Titre ─────────────────────────────────────────────
-        DrawRectangle(0,0,780,52,(Color){12,14,40,255});
+        DrawRectangle(0,0,780,52,Color{12,14,40,255});
         DrawLine(0,52,780,52,C_CYAN);
         ui_text("TETRIS ONLINE",0,780,13,26,C_CYAN);
 
@@ -177,10 +177,10 @@ int main(int argc, char** argv){
             if(state==State::MENU){
                 ui_text("TETRIS",GX,300,160,34,C_CYAN);
                 ui_text("ONLINE",GX,300,198,34,C_PURP);
-                ui_text("- - - - - - - -",GX,300,246,14,(Color){50,60,120,255});
-                ui_text("SOLO",  GX,300,272,20,(Color){180,220,255,255});
-                ui_text("ou",    GX,300,300,15,(Color){80,100,160,255});
-                ui_text("ONLINE",GX,300,322,20,(Color){220,180,255,255});
+                ui_text("- - - - - - - -",GX,300,246,14,Color{50,60,120,255});
+                ui_text("SOLO",  GX,300,272,20,Color{180,220,255,255});
+                ui_text("ou",    GX,300,300,15,Color{80,100,160,255});
+                ui_text("ONLINE",GX,300,322,20,Color{220,180,255,255});
             }
             if(state==State::WAITING||state==State::CONNECTING)
                 ui_text(state==State::WAITING?"En attente...":"Connexion...",
@@ -205,8 +205,8 @@ int main(int argc, char** argv){
 
         // Contrôles
         if(state==State::PLAYING||state==State::MENU){
-            DrawText("CONTROLES", 532,128,14,(Color){120,140,210,255});
-            Color kc=(Color){140,165,230,255};
+            DrawText("CONTROLES", 532,128,14,Color{120,140,210,255});
+            Color kc=Color{140,165,230,255};
             DrawText("< >  Deplacer",530,148,15,kc);
             DrawText("^    Rotation", 530,168,15,kc);
             DrawText("v    Descente", 530,188,15,kc);
@@ -291,8 +291,8 @@ int main(int argc, char** argv){
         }
 
         // ── Volume ────────────────────────────────────────────
-        DrawText("VOL",(int)SLX-28,(int)SLY+13,14,(Color){90,110,170,255});
-        DrawRectangleRounded(sl_bar,0.5f,6,(Color){30,35,80,255});
+        DrawText("VOL",(int)SLX-28,(int)SLY+13,14,Color{90,110,170,255});
+        DrawRectangleRounded(sl_bar,0.5f,6,Color{30,35,80,255});
         DrawRectangleRounded({SLX,SLY+18,SLW*vol,5},0.5f,6,C_CYAN);
         DrawRectangleRounded(sl_knob,0.5f,6,WHITE);
 
