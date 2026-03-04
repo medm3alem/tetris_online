@@ -30,6 +30,7 @@ if(WIN32 OR MINGW OR TOOLCHAIN_WINDOWS)
 
     target_include_directories(tetris PRIVATE "${RAYLIB_WIN_DIR}/include")
     target_link_directories(tetris PRIVATE "${RAYLIB_WIN_DIR}/lib")
+    target_compile_definitions(tetris PRIVATE _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN)
     target_link_libraries(tetris raylib winmm gdi32 opengl32 ws2_32)
     target_link_options(tetris PRIVATE -mwindows)
     set(CPACK_GENERATOR "ZIP")
