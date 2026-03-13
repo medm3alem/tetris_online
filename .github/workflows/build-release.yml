@@ -1,15 +1,15 @@
 name: Build & Release
 
-# Déclenché sur chaque tag vX.Y.Z (ex: git tag v1.0.0 && git push --tags)
+# Déclenché sur chaque tag vX.Y.Z (ex: git tag v1.1.0 && git push --tags)
 on:
   push:
     tags:
       - "v*.*.*"
-  workflow_dispatch:  # permet de lancer manuellement depuis GitHub
+  workflow_dispatch:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  #  LINUX
+  #  LINUX CLIENT
   # ─────────────────────────────────────────────────────────────
   build-linux:
     name: Linux (Ubuntu)
@@ -40,14 +40,14 @@ jobs:
         working-directory: client
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON
-          cmake --build build --config Release -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+          cmake --build build --config Release -j$(nproc)
 
       - name: Créer le package
         working-directory: client
         run: |
           mkdir -p package/TetrisOnline-linux
-          cp build/tetris          package/TetrisOnline-linux/
-          cp -r sounds             package/TetrisOnline-linux/
+          cp build/tetris package/TetrisOnline-linux/
+          cp -r sounds    package/TetrisOnline-linux/
           cd package
           tar -czf TetrisOnline-linux-x64.tar.gz TetrisOnline-linux/
 
@@ -58,11 +58,65 @@ jobs:
           path: client/package/TetrisOnline-linux-x64.tar.gz
 
   # ─────────────────────────────────────────────────────────────
-  #  WINDOWS  (cross-compilation mingw-w64 depuis Ubuntu)
+  #  SERVEUR (binaire Linux statique)
+  # ─────────────────────────────────────────────────────────────
+  build-server:
+    name: Serveur Linux
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake build-essential
+
+      - name: Compiler
+        working-directory: server
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++ -pthread"
+          cmake --build build --config Release -j$(nproc)
+
+      - name: Créer le package
+        working-directory: server
+        run: |
+          mkdir -p package
+          cp build/tetris_server package/
+          cat > package/README.txt << 'EOF'
+Tetris Online — Serveur
+
+Lancement :
+  ./tetris_server
+
+Le serveur écoute sur le port 4242 (TCP).
+Assurez-vous que le port est ouvert dans votre pare-feu.
+
+Comportement :
+  - Rooms 1v1, matchmaking automatique
+  - Heartbeat PING/PONG toutes les 10s
+  - Timeout client après 30s sans réponse
+  - Maximum 100 clients simultanés
+EOF
+          cd package
+          tar -czf TetrisOnline-server-linux-x64.tar.gz tetris_server README.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TetrisOnline-server-linux-x64
+          path: server/package/TetrisOnline-server-linux-x64.tar.gz
+
+  # ─────────────────────────────────────────────────────────────
+  #  WINDOWS CLIENT
   # ─────────────────────────────────────────────────────────────
   build-windows:
     name: Windows (natif MSVC)
     runs-on: windows-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,9 +153,12 @@ jobs:
           name: TetrisOnline-windows-x64
           path: client/TetrisOnline-windows-x64.zip
 
+  # ─────────────────────────────────────────────────────────────
+  #  MACOS CLIENT
+  # ─────────────────────────────────────────────────────────────
   build-macos:
     name: macOS (universal)
-    runs-on: macos-14   # Apple Silicon (M1) — compile aussi pour x86 via lipo
+    runs-on: macos-14
 
     steps:
       - name: Checkout
@@ -113,14 +170,14 @@ jobs:
       - name: Compiler
         working-directory: client
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release             -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
-          cmake --build build --config Release -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
+          cmake --build build --config Release -j$(sysctl -n hw.logicalcpu)
 
       - name: Créer le package
         working-directory: client
         run: |
           mkdir -p package/TetrisOnline-macos
-          # Le binaire est soit dans build/tetris soit dans build/tetris.app/Contents/MacOS/tetris
           if [ -f build/tetris ]; then
             cp build/tetris package/TetrisOnline-macos/
           else
@@ -137,14 +194,14 @@ jobs:
           path: client/package/TetrisOnline-macos-arm64.zip
 
   # ─────────────────────────────────────────────────────────────
-  #  RELEASE GITHUB — crée la release avec les 3 binaires
+  #  RELEASE GITHUB — 4 fichiers : 3 clients + 1 serveur
   # ─────────────────────────────────────────────────────────────
   release:
     name: Publier la release GitHub
-    needs: [build-linux, build-windows, build-macos]
+    needs: [build-linux, build-windows, build-macos, build-server]
     runs-on: ubuntu-22.04
     permissions:
-      contents: write   # nécessaire pour créer la release
+      contents: write
 
     steps:
       - name: Télécharger tous les artifacts
@@ -159,24 +216,48 @@ jobs:
           body: |
             ## Tetris Online ${{ github.ref_name }}
 
-            ### Téléchargements
+            ### Téléchargements — Client
             | Plateforme | Fichier |
             |------------|---------|
             | 🐧 Linux   | `TetrisOnline-linux-x64.tar.gz` |
             | 🪟 Windows | `TetrisOnline-windows-x64.zip`  |
             | 🍎 macOS   | `TetrisOnline-macos-arm64.zip`  |
 
-            ### Installation
-            **Linux** : extraire + `chmod +x tetris` + `./tetris`
-            **Windows** : extraire + double-cliquer `tetris.exe`
-            **macOS** : extraire + `./tetris` (ou clic droit → Ouvrir)
+            ### Téléchargements — Serveur
+            | Plateforme | Fichier |
+            |------------|---------|
+            | 🐧 Linux   | `TetrisOnline-server-linux-x64.tar.gz` |
 
-            ### Mode online
-            Lancer le serveur : `./server`
-            Se connecter : `./tetris <ip_serveur>`
+            ---
+
+            ### Installation client
+            **Linux** : extraire → `chmod +x tetris` → `./tetris`
+            **Windows** : extraire → double-cliquer `tetris.exe`
+            **macOS** : extraire → `./tetris` (ou clic droit → Ouvrir)
+
+            ### Héberger le serveur
+            ```bash
+            tar -xzf TetrisOnline-server-linux-x64.tar.gz
+            ./tetris_server
+            # Écoute sur le port 4242
+            ```
+
+            ### Se connecter à un serveur custom
+            ```bash
+            ./tetris <ip_ou_hostname>
+            # Exemple : ./tetris tetris-online.ddns.net
+            ```
+
+            ### Nouveautés ${{ github.ref_name }}
+            - TCP_NODELAY activé — latence réduite
+            - Heartbeat PING/PONG — détection des déconnexions en 30s
+            - Limite 100 clients simultanés
+            - Gestion `SERVER_FULL` côté client
+            - Logs structurés côté serveur `[HH:MM:SS] [INFO/WARN/ERROR]`
           files: |
             artifacts/TetrisOnline-linux-x64/TetrisOnline-linux-x64.tar.gz
             artifacts/TetrisOnline-windows-x64/TetrisOnline-windows-x64.zip
             artifacts/TetrisOnline-macos-arm64/TetrisOnline-macos-arm64.zip
+            artifacts/TetrisOnline-server-linux-x64/TetrisOnline-server-linux-x64.tar.gz
           draft: false
           prerelease: false
