@@ -81,13 +81,17 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++ -pthread"
           cmake --build build --config Release -j$(nproc)
 
-      - name: Créer le package
+       - name: Créer le package
         working-directory: server
         run: |
           mkdir -p package
           cp build/tetris_server package/
-          cat > package/README.txt << 'EOF'
-Tetris Online — Serveur
+          echo "Tetris Online - Serveur" > package/README.txt
+          echo "Lancement : ./tetris_server" >> package/README.txt
+          echo "Port : 4242 (TCP)" >> package/README.txt
+          echo "Ping/pong toutes les 10s, timeout 30s, max 100 clients" >> package/README.txt
+          cd package
+          tar -czf TetrisOnline-server-linux-x64.tar.gz tetris_server README.txt
 
 Lancement :
   ./tetris_server
