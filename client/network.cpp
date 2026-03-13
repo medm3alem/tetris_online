@@ -24,7 +24,21 @@ std::queue<std::string> messages;
 std::mutex msg_mutex;
 std::thread connection_thread;
 
+#ifdef _WIN32
+static bool wsa_initialized = false;
+static void init_wsa() {
+    if (!wsa_initialized) {
+        WSADATA wsa;
+        WSAStartup(MAKEWORD(2,2), &wsa);
+        wsa_initialized = true;
+    }
+}
+#endif
+
 void network_connect(const char* server_ip){
+#ifdef _WIN32
+    init_wsa();
+#endif
 // lancer la connexiion dans un thread séparé
     connection_thread = std::thread([server_ip](){
         sock = socket(AF_INET, SOCK_STREAM, 0);  //crée une socket TCP IPv4
