@@ -67,7 +67,7 @@ int main(int argc, char** argv){
     const char* SERVER=(argc>=2)?argv[1]:"tetris-online.ddns.net";
 
     InitWindow(780,800,"TETRIS ONLINE");
-    SetAudioStreamBufferSizeDefault(512); // latence ~12ms (avant InitAudioDevice)
+    SetAudioStreamBufferSizeDefault(512);
     InitAudioDevice();
     SetTargetFPS(60);
 
@@ -101,16 +101,25 @@ int main(int argc, char** argv){
         float   dt   =GetFrameTime();
 
         // ── Réseau ───────────────────────────────────────────
-        if(state==State::CONNECTING&&is_connected()){
+
+        // Connexion établie → s'enregistrer et passer en attente
+        if(state==State::CONNECTING && is_connected()){
             network_start_listener();
             network_send("READY\n");
             state=State::WAITING;
             jeu.set_msg("En attente d'un adversaire...");
         }
 
+        // Détection de déconnexion inattendue (timeout serveur, crash réseau…)
+        if((state==State::WAITING||state==State::PLAYING) && online && !is_connected()){
+            jeu.set_msg("Connexion perdue.");
+            state=State::GAMEOVER;
+        }
+
         if(state==State::WAITING||state==State::PLAYING){
             while(network_has_message()){
                 std::string m=network_pop_message();
+
                 if(m=="MATCH_START"){
                     state=State::PLAYING; paused=false;
                     gravity_t=GetTime();
@@ -118,6 +127,11 @@ int main(int argc, char** argv){
                 }
                 else if(m=="OPPONENT_LEFT"){
                     jeu.set_msg("Adversaire deconnecte.");
+                    disconnect(); state=State::GAMEOVER;
+                }
+                // ─── Serveur plein ────────────────────────────
+                else if(m=="SERVER_FULL"){
+                    jeu.set_msg("Serveur plein. Reessayez.");
                     disconnect(); state=State::GAMEOVER;
                 }
                 else if(jeu.apply_net(m)){

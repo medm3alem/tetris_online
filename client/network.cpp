@@ -4,19 +4,20 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
-#endif
-#include <thread>
-#include <queue>
-#include <mutex>
-#ifndef _WIN32
+#else
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <netinet/tcp.h>   // TCP_NODELAY
 #endif
+#include <thread>
+#include <queue>
+#include <mutex>
 #include <iostream>
 #include <cstring>
 #include <errno.h>
+
 bool network_alive = false;
 
 int sock = -1;
@@ -35,44 +36,34 @@ static void init_wsa() {
 }
 #endif
 
-void network_connect(const char* server_ip){
+// ─── Active TCP_NODELAY pour réduire la latence ───────────────
+static void enable_tcp_nodelay(int s) {
+    int flag = 1;
+#ifdef _WIN32
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char*)&flag, sizeof(flag));
+#else
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+#endif
+}
+
+void network_connect(const char* server_ip) {
 #ifdef _WIN32
     init_wsa();
 #endif
-// lancer la connexiion dans un thread séparé
     connection_thread = std::thread([server_ip](){
-        sock = socket(AF_INET, SOCK_STREAM, 0);  //crée une socket TCP IPv4
+        sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) {
             std::cerr << "ERROR: Socket creation failed: " << strerror(errno) << std::endl;
             return;
         }
         std::cout << "Socket created successfully (fd=" << sock << ")" << std::endl;
 
-        sockaddr_in server{};
-        server.sin_family = AF_INET;
-        server.sin_port = htons(4242); // port serveura
-        //const char* server_ip = "10.90.234.220";
-        //const char* server_ip = "10.31.30.16";
-        // Résoudre le hostname (DNS) ou IP directe
         struct addrinfo hints{}, *res;
-        hints.ai_family = AF_INET;
+        hints.ai_family   = AF_INET;
         hints.ai_socktype = SOCK_STREAM;
         if (getaddrinfo(server_ip, "4242", &hints, &res) != 0) {
             std::cerr << "ERROR: Cannot resolve host: " << server_ip << std::endl;
-            #ifdef _WIN32
-            closesocket(sock);
-            #else
-            close(sock);
-            #endif
-            sock = -1;
-            return;
-        }
-        server = *(sockaddr_in*)res->ai_addr;
-        freeaddrinfo(res);
-        if (connect(sock, (sockaddr*)&server, sizeof(server)) < 0) {
-            std::cerr << "ERROR: Connection failed: " << strerror(errno) << std::endl;
-            std::cerr << "Make sure the server is running on " << server_ip << ":4242" << std::endl;
-            #ifdef _WIN32
+#ifdef _WIN32
             closesocket(sock);
 #else
             close(sock);
@@ -80,26 +71,38 @@ void network_connect(const char* server_ip){
             sock = -1;
             return;
         }
-        network_alive = true;  // Seulement ici après succès
+        sockaddr_in server = *(sockaddr_in*)res->ai_addr;
+        freeaddrinfo(res);
+
+        if (connect(sock, (sockaddr*)&server, sizeof(server)) < 0) {
+            std::cerr << "ERROR: Connection failed: " << strerror(errno) << std::endl;
+            std::cerr << "Make sure the server is running on " << server_ip << ":4242" << std::endl;
+#ifdef _WIN32
+            closesocket(sock);
+#else
+            close(sock);
+#endif
+            sock = -1;
+            return;
+        }
+
+        enable_tcp_nodelay(sock);  // réduire la latence dès la connexion
+
+        network_alive = true;
         std::cout << "Connected to server successfully!" << std::endl;
     });
     connection_thread.detach();
-
-
 }
 
 void disconnect() {
     network_send("QUIT\n");
     if (sock >= 0) {
-        #ifdef _WIN32
+#ifdef _WIN32
         shutdown(sock, SD_BOTH);
+        closesocket(sock);
 #else
         shutdown(sock, SHUT_RDWR);
-#endif
-        #ifdef _WIN32
-            closesocket(sock);
-#else
-            close(sock);
+        close(sock);
 #endif
         sock = -1;
     }
@@ -112,8 +115,11 @@ void network_send(const std::string& msg) {
                   << network_alive << ", sock=" << sock << ")" << std::endl;
         return;
     }
-
-    int sent = send(sock, msg.c_str(), msg.size(), 0); //envoie message
+#ifdef _WIN32
+    int sent = send(sock, msg.c_str(), (int)msg.size(), 0);
+#else
+    int sent = send(sock, msg.c_str(), msg.size(), MSG_NOSIGNAL);
+#endif
     if (sent < 0) {
         std::cerr << "ERROR: Send failed: " << strerror(errno) << std::endl;
         network_alive = false;
@@ -130,7 +136,7 @@ void network_start_listener() {
         std::cout << "Listener thread started" << std::endl;
 
         while (network_alive && sock >= 0) {
-            int n = recv(sock, buffer, sizeof(buffer)-1, 0);
+            int n = recv(sock, buffer, sizeof(buffer) - 1, 0);
             if (n < 0) {
                 std::cerr << "ERROR: Recv failed: " << strerror(errno) << std::endl;
                 network_alive = false;
@@ -145,22 +151,35 @@ void network_start_listener() {
             buffer[n] = '\0';
             accumulated += std::string(buffer);
 
-            // Traiter tous les messages complets (terminés par \n)
             size_t pos;
             while ((pos = accumulated.find('\n')) != std::string::npos) {
                 std::string msg = accumulated.substr(0, pos);
-                accumulated = accumulated.substr(pos + 1);
+                accumulated     = accumulated.substr(pos + 1);
 
-                if (!msg.empty()) {
-                    std::cout << "Received: " << msg << std::endl;
-                    std::lock_guard<std::mutex> lock(msg_mutex);
-                    messages.push(msg); // message mis en file
+                if (msg.empty()) continue;
+
+                // ─── PING géré ici, transparent pour le reste du jeu ───
+                if (msg == "PING") {
+                    std::cout << "PING received, sending PONG" << std::endl;
+                    // network_send n'est pas utilisable depuis ce thread
+                    // (pas de mutex sur sock) → on envoie directement
+                    const char* pong = "PONG\n";
+#ifdef _WIN32
+                    send(sock, pong, 5, 0);
+#else
+                    send(sock, pong, 5, MSG_NOSIGNAL);
+#endif
+                    continue;  // ne pas remonter PING à la logique de jeu
                 }
+
+                std::cout << "Received: " << msg << std::endl;
+                std::lock_guard<std::mutex> lock(msg_mutex);
+                messages.push(msg);
             }
         }
 
         if (sock >= 0) {
-            #ifdef _WIN32
+#ifdef _WIN32
             closesocket(sock);
 #else
             close(sock);
@@ -170,7 +189,6 @@ void network_start_listener() {
         std::cout << "Listener thread stopped" << std::endl;
     }).detach();
 }
-
 
 bool network_has_message() {
     std::lock_guard<std::mutex> lock(msg_mutex);
