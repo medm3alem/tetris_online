@@ -14,6 +14,8 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <cstring>
+#include <cerrno>
 
 // ─────────────────────────────────────────────
 //  Config
@@ -215,7 +217,7 @@ static void ping_watchdog() {
 // ─────────────────────────────────────────────
 //  Thread par client
 // ─────────────────────────────────────────────
-static void handle_client(int client_socket) {
+void handle_client(int client_socket) {
     enable_tcp_nodelay(client_socket);
 
     {
