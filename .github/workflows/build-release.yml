@@ -1,6 +1,5 @@
 name: Build & Release
 
-# Déclenché sur chaque tag vX.Y.Z (ex: git tag v1.1.0 && git push --tags)
 on:
   push:
     tags:
@@ -8,6 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
+
   # ─────────────────────────────────────────────────────────────
   #  LINUX CLIENT
   # ─────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Installer les dépendances système
+      - name: Installer les dependances systeme
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
@@ -42,7 +42,7 @@ jobs:
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON
           cmake --build build --config Release -j$(nproc)
 
-      - name: Créer le package
+      - name: Creer le package
         working-directory: client
         run: |
           mkdir -p package/TetrisOnline-linux
@@ -68,7 +68,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Installer les dépendances
+      - name: Installer les dependances
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y cmake build-essential
@@ -81,30 +81,12 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++ -pthread"
           cmake --build build --config Release -j$(nproc)
 
-       - name: Créer le package
+      - name: Creer le package
         working-directory: server
         run: |
           mkdir -p package
           cp build/tetris_server package/
-          echo "Tetris Online - Serveur" > package/README.txt
-          echo "Lancement : ./tetris_server" >> package/README.txt
-          echo "Port : 4242 (TCP)" >> package/README.txt
-          echo "Ping/pong toutes les 10s, timeout 30s, max 100 clients" >> package/README.txt
-          cd package
-          tar -czf TetrisOnline-server-linux-x64.tar.gz tetris_server README.txt
-
-Lancement :
-  ./tetris_server
-
-Le serveur écoute sur le port 4242 (TCP).
-Assurez-vous que le port est ouvert dans votre pare-feu.
-
-Comportement :
-  - Rooms 1v1, matchmaking automatique
-  - Heartbeat PING/PONG toutes les 10s
-  - Timeout client après 30s sans réponse
-  - Maximum 100 clients simultanés
-EOF
+          printf "Tetris Online - Serveur\n\nLancement\n  ./tetris_server\n\nPort 4242 TCP\nPing/pong 10s, timeout 30s, max 100 clients\n" > package/README.txt
           cd package
           tar -czf TetrisOnline-server-linux-x64.tar.gz tetris_server README.txt
 
@@ -142,7 +124,7 @@ EOF
           cmake --build build-win --config Release
         shell: cmd
 
-      - name: Créer le package
+      - name: Creer le package
         working-directory: client
         run: |
           New-Item -ItemType Directory -Force -Path package/TetrisOnline-windows
@@ -178,7 +160,7 @@ EOF
             -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
           cmake --build build --config Release -j$(sysctl -n hw.logicalcpu)
 
-      - name: Créer le package
+      - name: Creer le package
         working-directory: client
         run: |
           mkdir -p package/TetrisOnline-macos
@@ -198,7 +180,7 @@ EOF
           path: client/package/TetrisOnline-macos-arm64.zip
 
   # ─────────────────────────────────────────────────────────────
-  #  RELEASE GITHUB — 4 fichiers : 3 clients + 1 serveur
+  #  RELEASE GITHUB
   # ─────────────────────────────────────────────────────────────
   release:
     name: Publier la release GitHub
@@ -208,56 +190,45 @@ EOF
       contents: write
 
     steps:
-      - name: Télécharger tous les artifacts
+      - name: Telecharger tous les artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
 
-      - name: Créer la GitHub Release
+      - name: Creer la GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "Tetris Online ${{ github.ref_name }}"
           body: |
             ## Tetris Online ${{ github.ref_name }}
 
-            ### Téléchargements — Client
+            ### Client
             | Plateforme | Fichier |
             |------------|---------|
-            | 🐧 Linux   | `TetrisOnline-linux-x64.tar.gz` |
-            | 🪟 Windows | `TetrisOnline-windows-x64.zip`  |
-            | 🍎 macOS   | `TetrisOnline-macos-arm64.zip`  |
+            | Linux      | TetrisOnline-linux-x64.tar.gz  |
+            | Windows    | TetrisOnline-windows-x64.zip   |
+            | macOS      | TetrisOnline-macos-arm64.zip   |
 
-            ### Téléchargements — Serveur
+            ### Serveur
             | Plateforme | Fichier |
             |------------|---------|
-            | 🐧 Linux   | `TetrisOnline-server-linux-x64.tar.gz` |
-
-            ---
+            | Linux      | TetrisOnline-server-linux-x64.tar.gz |
 
             ### Installation client
-            **Linux** : extraire → `chmod +x tetris` → `./tetris`
-            **Windows** : extraire → double-cliquer `tetris.exe`
-            **macOS** : extraire → `./tetris` (ou clic droit → Ouvrir)
+            **Linux** extraire, chmod +x tetris, ./tetris
+            **Windows** extraire, double-cliquer tetris.exe
+            **macOS** extraire, ./tetris
 
-            ### Héberger le serveur
-            ```bash
+            ### Lancer le serveur
+            ```
             tar -xzf TetrisOnline-server-linux-x64.tar.gz
             ./tetris_server
-            # Écoute sur le port 4242
             ```
 
-            ### Se connecter à un serveur custom
-            ```bash
+            ### Connexion serveur custom
+            ```
             ./tetris <ip_ou_hostname>
-            # Exemple : ./tetris tetris-online.ddns.net
             ```
-
-            ### Nouveautés ${{ github.ref_name }}
-            - TCP_NODELAY activé — latence réduite
-            - Heartbeat PING/PONG — détection des déconnexions en 30s
-            - Limite 100 clients simultanés
-            - Gestion `SERVER_FULL` côté client
-            - Logs structurés côté serveur `[HH:MM:SS] [INFO/WARN/ERROR]`
           files: |
             artifacts/TetrisOnline-linux-x64/TetrisOnline-linux-x64.tar.gz
             artifacts/TetrisOnline-windows-x64/TetrisOnline-windows-x64.zip
