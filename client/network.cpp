@@ -38,16 +38,22 @@ void network_connect(const char* server_ip){
         server.sin_port = htons(4242); // port serveura
         //const char* server_ip = "10.90.234.220";
         //const char* server_ip = "10.31.30.16";
-        if (inet_pton(AF_INET, server_ip, &server.sin_addr) <= 0) {
-            std::cerr << "ERROR: Invalid address: " << server_ip << std::endl;
+        // Résoudre le hostname (DNS) ou IP directe
+        struct addrinfo hints{}, *res;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        if (getaddrinfo(server_ip, "4242", &hints, &res) != 0) {
+            std::cerr << "ERROR: Cannot resolve host: " << server_ip << std::endl;
             #ifdef _WIN32
             closesocket(sock);
-#else
+            #else
             close(sock);
-#endif
+            #endif
             sock = -1;
             return;
         }
+        server = *(sockaddr_in*)res->ai_addr;
+        freeaddrinfo(res);
         if (connect(sock, (sockaddr*)&server, sizeof(server)) < 0) {
             std::cerr << "ERROR: Connection failed: " << strerror(errno) << std::endl;
             std::cerr << "Make sure the server is running on " << server_ip << ":4242" << std::endl;
