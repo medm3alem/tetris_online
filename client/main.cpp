@@ -11,7 +11,6 @@
 // ═══════════════════════════════════════════════════════════════
 enum class State { MENU, CONNECTING, WAITING, PLAYING, GAMEOVER };
 
-// Timer de gravité : retourne true toutes les `interval` secondes
 static double gravity_t = 0;
 static bool gravity_tick(double interval){
     double now=GetTime();
@@ -101,8 +100,6 @@ int main(int argc, char** argv){
         float   dt   =GetFrameTime();
 
         // ── Réseau ───────────────────────────────────────────
-
-        // Connexion établie → s'enregistrer et passer en attente
         if(state==State::CONNECTING && is_connected()){
             network_start_listener();
             network_send("READY\n");
@@ -110,8 +107,9 @@ int main(int argc, char** argv){
             jeu.set_msg("En attente d'un adversaire...");
         }
 
-        // Détection de déconnexion inattendue (timeout serveur, crash réseau…)
-        if((state==State::WAITING||state==State::PLAYING) && online && !is_connected()){
+        if((state==State::WAITING||state==State::PLAYING) && online && !is_connected()
+           && jeu.opp_state != OppState::LOST){
+            jeu.set_opp_state(OppState::DISCONNECTED);
             jeu.set_msg("Connexion perdue.");
             state=State::GAMEOVER;
         }
@@ -124,18 +122,23 @@ int main(int argc, char** argv){
                     state=State::PLAYING; paused=false;
                     gravity_t=GetTime();
                     jeu.set_msg("C'est parti !");
+                    jeu.set_opp_state(OppState::PLAYING);
                 }
                 else if(m=="OPPONENT_LEFT"){
+                    jeu.set_opp_state(OppState::DISCONNECTED);
                     jeu.set_msg("Adversaire deconnecte.");
-                    disconnect(); state=State::GAMEOVER;
+                    disconnect();
+                    state=State::GAMEOVER;
                 }
-                // ─── Serveur plein ────────────────────────────
                 else if(m=="SERVER_FULL"){
                     jeu.set_msg("Serveur plein. Reessayez.");
-                    disconnect(); state=State::GAMEOVER;
+                    disconnect();
+                    state=State::GAMEOVER;
                 }
                 else if(jeu.apply_net(m)){
-                    disconnect(); state=State::GAMEOVER;
+                    // adversaire a perdu → on a gagné
+                    disconnect();
+                    state=State::GAMEOVER;
                 }
             }
         }
@@ -155,12 +158,12 @@ int main(int argc, char** argv){
                     state=State::GAMEOVER;
                 }
 
-                // Broadcast attaque
                 int lines=jeu.pop_lines();
-                if(lines>0&&online&&is_connected())
+                if(lines>0&&online&&is_connected()){
                     network_send("LINES|"+std::to_string(lines)+"\n");
+                    jeu.set_opp_state(OppState::UNDER_ATTACK);
+                }
 
-                // Broadcast score
                 if(jeu.pop_score_changed()&&online&&is_connected())
                     network_send("SCORE|"+std::to_string(jeu.score())
                                  +"|"+std::to_string(jeu.level())+"\n");
@@ -273,6 +276,9 @@ int main(int argc, char** argv){
                 break;
 
             case State::GAMEOVER:
+                // Panneau adversaire visible même en GAMEOVER
+                if(online) jeu.draw_opponent();
+
                 ui_button({340,295,210,42},"REJOUER",C_GREEN);
                 ui_button({560,295,212,42},"MENU",   C_BLUE);
                 if(ui_clicked({340,295,210,42},mouse)){
