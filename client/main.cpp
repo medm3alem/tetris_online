@@ -64,7 +64,7 @@ int main(int argc, char** argv){
 #ifndef _WIN32
     signal(SIGPIPE,SIG_IGN);
 #endif
-    const char* SERVER=(argc>=2)?argv[1]:"tetris-online.ddns.net";
+    const char* SERVER=(argc>=2)?argv[1]:"bore.pub:19050";
 
     InitWindow(780,800,"TETRIS ONLINE");
     SetAudioStreamBufferSizeDefault(512);

@@ -9,17 +9,17 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <netinet/tcp.h>   // TCP_NODELAY
+#include <netinet/tcp.h>
 #endif
 #include <thread>
 #include <queue>
 #include <mutex>
 #include <iostream>
 #include <cstring>
+#include <string>
 #include <errno.h>
 
 bool network_alive = false;
-
 int sock = -1;
 std::queue<std::string> messages;
 std::mutex msg_mutex;
@@ -36,7 +36,6 @@ static void init_wsa() {
 }
 #endif
 
-// ─── Active TCP_NODELAY pour réduire la latence ───────────────
 static void enable_tcp_nodelay(int s) {
     int flag = 1;
 #ifdef _WIN32
@@ -51,6 +50,17 @@ void network_connect(const char* server_ip) {
     init_wsa();
 #endif
     connection_thread = std::thread([server_ip](){
+
+        // ── Parser "host:port" ou "host" seul ────────────────
+        std::string host(server_ip);
+        std::string port = "4242";
+        size_t colon = host.rfind(':');
+        if (colon != std::string::npos) {
+            port = host.substr(colon + 1);
+            host = host.substr(0, colon);
+        }
+        std::cout << "Connecting to " << host << ":" << port << std::endl;
+
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) {
             std::cerr << "ERROR: Socket creation failed: " << strerror(errno) << std::endl;
@@ -61,8 +71,8 @@ void network_connect(const char* server_ip) {
         struct addrinfo hints{}, *res;
         hints.ai_family   = AF_INET;
         hints.ai_socktype = SOCK_STREAM;
-        if (getaddrinfo(server_ip, "4242", &hints, &res) != 0) {
-            std::cerr << "ERROR: Cannot resolve host: " << server_ip << std::endl;
+        if (getaddrinfo(host.c_str(), port.c_str(), &hints, &res) != 0) {
+            std::cerr << "ERROR: Cannot resolve host: " << host << std::endl;
 #ifdef _WIN32
             closesocket(sock);
 #else
@@ -76,7 +86,7 @@ void network_connect(const char* server_ip) {
 
         if (connect(sock, (sockaddr*)&server, sizeof(server)) < 0) {
             std::cerr << "ERROR: Connection failed: " << strerror(errno) << std::endl;
-            std::cerr << "Make sure the server is running on " << server_ip << ":4242" << std::endl;
+            std::cerr << "Make sure the server is running on " << host << ":" << port << std::endl;
 #ifdef _WIN32
             closesocket(sock);
 #else
@@ -86,8 +96,7 @@ void network_connect(const char* server_ip) {
             return;
         }
 
-        enable_tcp_nodelay(sock);  // réduire la latence dès la connexion
-
+        enable_tcp_nodelay(sock);
         network_alive = true;
         std::cout << "Connected to server successfully!" << std::endl;
     });
@@ -132,7 +141,6 @@ void network_start_listener() {
     std::thread([](){
         char buffer[256];
         std::string accumulated;
-
         std::cout << "Listener thread started" << std::endl;
 
         while (network_alive && sock >= 0) {
@@ -155,21 +163,16 @@ void network_start_listener() {
             while ((pos = accumulated.find('\n')) != std::string::npos) {
                 std::string msg = accumulated.substr(0, pos);
                 accumulated     = accumulated.substr(pos + 1);
-
                 if (msg.empty()) continue;
 
-                // ─── PING géré ici, transparent pour le reste du jeu ───
                 if (msg == "PING") {
-                    std::cout << "PING received, sending PONG" << std::endl;
-                    // network_send n'est pas utilisable depuis ce thread
-                    // (pas de mutex sur sock) → on envoie directement
                     const char* pong = "PONG\n";
 #ifdef _WIN32
                     send(sock, pong, 5, 0);
 #else
                     send(sock, pong, 5, MSG_NOSIGNAL);
 #endif
-                    continue;  // ne pas remonter PING à la logique de jeu
+                    continue;
                 }
 
                 std::cout << "Received: " << msg << std::endl;
