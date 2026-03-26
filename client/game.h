@@ -423,7 +423,7 @@ public:
                         danger < 0.7f ? Color{220,160,20,255} :
                                         Color{200,40,40,255};
         if(danger > 0)
-            DrawRectangleRounded({352,434,(int)(408*danger),10},0.5f,4, bar_col);
+            DrawRectangleRounded({352,434,(float)(408*danger),10},0.5f,4, bar_col);
         DrawText("DANGER", 352, 434, 10, Color{80,80,120,200});
     }
 
